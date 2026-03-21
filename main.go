@@ -183,7 +183,7 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := fmt.Sprintf("%s.mp4", uuid.New().String())
+	filename := fmt.Sprintf("%s.webm", uuid.New().String())
 
 	queueMutex.Lock()
 	downloadQueue = append(downloadQueue, DownloadJob{
@@ -241,14 +241,14 @@ func getVideoMetadata(url string) (VideoMetadata, error) {
 
 func saveMetadata(filename string, metadata VideoMetadata) {
 	absPath, _ := filepath.Abs(config.MetadataDir)
-	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".mp4")+".json")
+	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".webm")+".json")
 	data, _ := json.MarshalIndent(metadata, "", "  ")
 	os.WriteFile(metadataPath, data, 0644)
 }
 
 func loadMetadata(filename string) VideoMetadata {
 	absPath, _ := filepath.Abs(config.MetadataDir)
-	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".mp4")+".json")
+	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".webm")+".json")
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
 		return VideoMetadata{}
@@ -258,8 +258,8 @@ func loadMetadata(filename string) VideoMetadata {
 	return metadata
 }
 
-func convertToMP4(inputPath, outputPath string) error {
-	cmd := exec.Command("ffmpeg", "-y", "-i", inputPath, "-c:v", "libx264", "-c:a", "aac", "-strict", "experimental", outputPath)
+func convertToWebm(inputPath, outputPath string) error {
+	cmd := exec.Command("ffmpeg", "-y", "-i", inputPath, "-c:v", "libvpx-vp9", "-c:a", "libopus", outputPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -296,10 +296,10 @@ func getVideos() ([]Video, error) {
 
 	var videos []Video
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".mp4") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".webm") {
 			continue
 		}
-		thumbName := strings.TrimSuffix(entry.Name(), ".mp4") + ".jpg"
+		thumbName := strings.TrimSuffix(entry.Name(), ".webm") + ".jpg"
 		thumbPath := filepath.Join(config.ThumbnailsDir, thumbName)
 		if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
 			generateThumbnail(filepath.Join(config.VideoDir, entry.Name()), entry.Name())
@@ -308,10 +308,10 @@ func getVideos() ([]Video, error) {
 		metadata := loadMetadata(entry.Name())
 		title := metadata.Title
 		if title == "" {
-			title = strings.TrimSuffix(entry.Name(), ".mp4")
+			title = strings.TrimSuffix(entry.Name(), ".webm")
 		}
 		videos = append(videos, Video{
-			Name:      strings.TrimSuffix(entry.Name(), ".mp4"),
+			Name:      strings.TrimSuffix(entry.Name(), ".webm"),
 			Filename:  entry.Name(),
 			Thumbnail: "/thumbnails/" + thumbName,
 			Title:     title,
@@ -358,7 +358,7 @@ func cleanYouTubeURL(rawURL string) string {
 func generateThumbnail(videoPath, filename string) {
 	absPath, _ := filepath.Abs(config.ThumbnailsDir)
 	os.MkdirAll(absPath, 0755)
-	thumbName := strings.TrimSuffix(filename, ".mp4") + ".jpg"
+	thumbName := strings.TrimSuffix(filename, ".webm") + ".jpg"
 	thumbPath := filepath.Join(absPath, thumbName)
 	fmt.Printf("Generating thumbnail: ffmpeg -y -i %s -ss 00:00:01 -vframes 1 -q:v 2 %s\n", videoPath, thumbPath)
 	cmd := exec.Command("ffmpeg", "-y", "-i", videoPath, "-ss", "00:00:01", "-vframes", "1", "-q:v", "2", thumbPath)
@@ -376,10 +376,10 @@ func generateMissingThumbnails() {
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".mp4") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".webm") {
 			continue
 		}
-		thumbName := strings.TrimSuffix(entry.Name(), ".mp4") + ".jpg"
+		thumbName := strings.TrimSuffix(entry.Name(), ".webm") + ".jpg"
 		thumbPath := filepath.Join(config.ThumbnailsDir, thumbName)
 		if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
 			videoPath := filepath.Join(config.VideoDir, entry.Name())
@@ -429,9 +429,9 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	videoName := filepath.Base(r.URL.Path)
 	videoPath := filepath.Join(config.VideoDir, videoName)
-	thumbName := strings.TrimSuffix(videoName, ".mp4") + ".jpg"
+	thumbName := strings.TrimSuffix(videoName, ".webm") + ".jpg"
 	thumbPath := filepath.Join(config.ThumbnailsDir, thumbName)
-	metadataName := strings.TrimSuffix(videoName, ".mp4") + ".json"
+	metadataName := strings.TrimSuffix(videoName, ".webm") + ".json"
 	metadataPath := filepath.Join(config.MetadataDir, metadataName)
 	os.Remove(videoPath)
 	os.Remove(thumbPath)
@@ -485,7 +485,7 @@ func processDownloadQueue() {
 		downloadStatus.Progress = 50
 		downloadMutex.Unlock()
 
-		downloadedFile := tempPath + ".mkv"
+		downloadedFile := tempPath + ".webm"
 		if _, err := os.Stat(downloadedFile); os.IsNotExist(err) {
 			files, _ := os.ReadDir(absPath)
 			for _, f := range files {
@@ -496,12 +496,16 @@ func processDownloadQueue() {
 			}
 		}
 
-		if err := convertToMP4(downloadedFile, videoPath); err != nil {
-			fmt.Printf("Failed to convert %s: %v\n", job.URL, err)
+		if strings.HasSuffix(downloadedFile, ".webm") {
+			os.Rename(downloadedFile, videoPath)
+		} else {
+			if err := convertToWebm(downloadedFile, videoPath); err != nil {
+				fmt.Printf("Failed to convert %s: %v\n", job.URL, err)
+				os.Remove(downloadedFile)
+				continue
+			}
 			os.Remove(downloadedFile)
-			continue
 		}
-		os.Remove(downloadedFile)
 
 		downloadMutex.Lock()
 		downloadStatus.Progress = 75
