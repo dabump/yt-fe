@@ -113,13 +113,13 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 
 	videoID := extractVideoID(url)
 	if videoID == "" {
-		serveIndex(w, r, "", "Invalid YouTube URL")
+		serveIndex(w, r, "", "Invalid YouTube URL. Please provide a valid YouTube video link (e.g., https://www.youtube.com/watch?v=VIDEO_ID)")
 		return
 	}
 
 	metadata, err := getVideoMetadata(url)
 	if err != nil {
-		serveIndex(w, r, "", fmt.Sprintf("Failed to get video metadata: %v", err))
+		serveIndex(w, r, "", err.Error())
 		return
 	}
 
@@ -135,7 +135,7 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 
 	err = cmd.Run()
 	if err != nil {
-		serveIndex(w, r, "", fmt.Sprintf("Failed to download video: %v", err))
+		serveIndex(w, r, "", "Failed to download video. The video may be age-restricted, region-locked, or require authentication.")
 		return
 	}
 
@@ -164,9 +164,19 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 
 func getVideoMetadata(url string) (VideoMetadata, error) {
 	cmd := exec.Command("yt-dlp", "--dump-json", "--no-download", url)
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return VideoMetadata{}, err
+		errMsg := string(output)
+		if strings.Contains(errMsg, "is not a valid URL") || strings.Contains(errMsg, "Unsupported URL") {
+			return VideoMetadata{}, fmt.Errorf("invalid YouTube URL: %s", url)
+		}
+		if strings.Contains(errMsg, "Video unavailable") || strings.Contains(errMsg, "is unavailable") {
+			return VideoMetadata{}, fmt.Errorf("this YouTube video is unavailable or has been removed")
+		}
+		if strings.Contains(errMsg, "Unable to extract") || strings.Contains(errMsg, "ERROR") {
+			return VideoMetadata{}, fmt.Errorf("could not fetch video information. The video may not exist or YouTube may be blocking the request")
+		}
+		return VideoMetadata{}, fmt.Errorf("failed to get video information: %s", errMsg)
 	}
 
 	var data struct {
@@ -174,7 +184,7 @@ func getVideoMetadata(url string) (VideoMetadata, error) {
 		DisplayID string `json:"display_id"`
 	}
 	if err := json.Unmarshal(output, &data); err != nil {
-		return VideoMetadata{}, err
+		return VideoMetadata{}, fmt.Errorf("failed to parse video information")
 	}
 
 	return VideoMetadata{
