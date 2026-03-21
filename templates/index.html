@@ -182,13 +182,21 @@
             transform: scale(1.1);
         }
         
+        .video-card .thumbnail-wrapper {
+            position: relative;
+        }
+        
+        .video-card .thumbnail-wrapper img {
+            display: block;
+        }
+        
         .video-card .play-overlay {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
-            height: calc(100% - 80px);
-            background: rgba(0, 0, 0, 0.3);
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -469,7 +477,7 @@
             {{range .Videos}}
             <div class="video-card" onclick="openVideo('/video/{{.Filename}}')">
                 <button class="delete-btn" onclick="event.stopPropagation(); deleteVideo('{{.Filename}}')">&times;</button>
-                <div style="position: relative;">
+                <div class="thumbnail-wrapper">
                     <img src="{{.Thumbnail}}" alt="{{.Name}}">
                     <div class="play-overlay">
                         <div class="play-icon">
