@@ -648,7 +648,7 @@
                 <form action="/download" method="POST" id="downloadForm">
                     <div class="modal-body">
                         <label for="url" class="form-label">YouTube URL</label>
-                        <input type="text" class="form-control" id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." required>
+                        <input type="text" class="form-control" id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." required autofocus>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -664,6 +664,10 @@
         let modal;
         document.addEventListener('DOMContentLoaded', () => {
             modal = new bootstrap.Modal(document.getElementById('downloadModal'));
+            
+            document.getElementById('downloadModal').addEventListener('shown.bs.modal', () => {
+                document.getElementById('url').focus();
+            });
             
             document.getElementById('downloadForm').addEventListener('submit', function(e) {
                 e.preventDefault();

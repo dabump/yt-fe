@@ -1,0 +1,4 @@
+video_dir: "video"
+thumbnails_dir: "thumbnails"
+metadata_dir: "metadata"
+static_dir: "static"

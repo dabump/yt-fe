@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gopkg.in/yaml.v3"
 )
 
 type Video struct {
@@ -54,6 +55,37 @@ type DownloadStatus struct {
 	Progress   float64
 }
 
+type Config struct {
+	VideoDir      string `yaml:"video_dir"`
+	ThumbnailsDir string `yaml:"thumbnails_dir"`
+	MetadataDir   string `yaml:"metadata_dir"`
+	StaticDir     string `yaml:"static_dir"`
+}
+
+var config Config
+
+func loadConfig() Config {
+	data, err := os.ReadFile("config.yaml")
+	if err != nil {
+		return Config{
+			VideoDir:      "video",
+			ThumbnailsDir: "thumbnails",
+			MetadataDir:   "metadata",
+			StaticDir:     "static",
+		}
+	}
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return Config{
+			VideoDir:      "video",
+			ThumbnailsDir: "thumbnails",
+			MetadataDir:   "metadata",
+			StaticDir:     "static",
+		}
+	}
+	return cfg
+}
+
 var (
 	downloadQueue   []DownloadJob
 	downloadStatus  DownloadStatus
@@ -72,14 +104,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	os.MkdirAll("video", 0755)
-	os.MkdirAll("thumbnails", 0755)
-	os.MkdirAll("metadata", 0755)
-	os.MkdirAll("static", 0755)
+	config = loadConfig()
+
+	os.MkdirAll(config.VideoDir, 0755)
+	os.MkdirAll(config.ThumbnailsDir, 0755)
+	os.MkdirAll(config.MetadataDir, 0755)
+	os.MkdirAll(config.StaticDir, 0755)
 
 	generateMissingThumbnails()
 
-	fs := http.FileServer(http.Dir("static"))
+	fs := http.FileServer(http.Dir(config.StaticDir))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	http.HandleFunc("/", indexHandler)
@@ -206,14 +240,14 @@ func getVideoMetadata(url string) (VideoMetadata, error) {
 }
 
 func saveMetadata(filename string, metadata VideoMetadata) {
-	absPath, _ := filepath.Abs("metadata")
+	absPath, _ := filepath.Abs(config.MetadataDir)
 	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".mp4")+".json")
 	data, _ := json.MarshalIndent(metadata, "", "  ")
 	os.WriteFile(metadataPath, data, 0644)
 }
 
 func loadMetadata(filename string) VideoMetadata {
-	absPath, _ := filepath.Abs("metadata")
+	absPath, _ := filepath.Abs(config.MetadataDir)
 	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".mp4")+".json")
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
@@ -252,7 +286,7 @@ func serveIndex(w http.ResponseWriter, r *http.Request, success, errMsg string) 
 }
 
 func getVideos() ([]Video, error) {
-	entries, err := os.ReadDir("video")
+	entries, err := os.ReadDir(config.VideoDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []Video{}, nil
@@ -266,9 +300,9 @@ func getVideos() ([]Video, error) {
 			continue
 		}
 		thumbName := strings.TrimSuffix(entry.Name(), ".mp4") + ".jpg"
-		thumbPath := filepath.Join("thumbnails", thumbName)
+		thumbPath := filepath.Join(config.ThumbnailsDir, thumbName)
 		if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
-			generateThumbnail(filepath.Join("video", entry.Name()), entry.Name())
+			generateThumbnail(filepath.Join(config.VideoDir, entry.Name()), entry.Name())
 		}
 		info, _ := entry.Info()
 		metadata := loadMetadata(entry.Name())
@@ -322,7 +356,7 @@ func cleanYouTubeURL(rawURL string) string {
 }
 
 func generateThumbnail(videoPath, filename string) {
-	absPath, _ := filepath.Abs("thumbnails")
+	absPath, _ := filepath.Abs(config.ThumbnailsDir)
 	os.MkdirAll(absPath, 0755)
 	thumbName := strings.TrimSuffix(filename, ".mp4") + ".jpg"
 	thumbPath := filepath.Join(absPath, thumbName)
@@ -336,7 +370,7 @@ func generateThumbnail(videoPath, filename string) {
 }
 
 func generateMissingThumbnails() {
-	entries, err := os.ReadDir("video")
+	entries, err := os.ReadDir(config.VideoDir)
 	if err != nil {
 		return
 	}
@@ -346,9 +380,9 @@ func generateMissingThumbnails() {
 			continue
 		}
 		thumbName := strings.TrimSuffix(entry.Name(), ".mp4") + ".jpg"
-		thumbPath := filepath.Join("thumbnails", thumbName)
+		thumbPath := filepath.Join(config.ThumbnailsDir, thumbName)
 		if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
-			videoPath := filepath.Join("video", entry.Name())
+			videoPath := filepath.Join(config.VideoDir, entry.Name())
 			fmt.Printf("Generating thumbnail for %s...\n", entry.Name())
 			generateThumbnail(videoPath, entry.Name())
 		}
@@ -357,7 +391,7 @@ func generateMissingThumbnails() {
 
 func thumbnailHandler(w http.ResponseWriter, r *http.Request) {
 	thumbName := filepath.Base(r.URL.Path)
-	thumbPath := filepath.Join("thumbnails", thumbName)
+	thumbPath := filepath.Join(config.ThumbnailsDir, thumbName)
 	file, err := os.Open(thumbPath)
 	if err != nil {
 		http.NotFound(w, r)
@@ -377,7 +411,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 func videoHandler(w http.ResponseWriter, r *http.Request) {
 	videoName := filepath.Base(r.URL.Path)
-	videoPath := filepath.Join("video", videoName)
+	videoPath := filepath.Join(config.VideoDir, videoName)
 	file, err := os.Open(videoPath)
 	if err != nil {
 		http.NotFound(w, r)
@@ -394,11 +428,11 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	videoName := filepath.Base(r.URL.Path)
-	videoPath := filepath.Join("video", videoName)
+	videoPath := filepath.Join(config.VideoDir, videoName)
 	thumbName := strings.TrimSuffix(videoName, ".mp4") + ".jpg"
-	thumbPath := filepath.Join("thumbnails", thumbName)
+	thumbPath := filepath.Join(config.ThumbnailsDir, thumbName)
 	metadataName := strings.TrimSuffix(videoName, ".mp4") + ".json"
-	metadataPath := filepath.Join("metadata", metadataName)
+	metadataPath := filepath.Join(config.MetadataDir, metadataName)
 	os.Remove(videoPath)
 	os.Remove(thumbPath)
 	os.Remove(metadataPath)
@@ -432,7 +466,7 @@ func processDownloadQueue() {
 			continue
 		}
 
-		absPath, _ := filepath.Abs("video")
+		absPath, _ := filepath.Abs(config.VideoDir)
 		videoPath := filepath.Join(absPath, job.Filename)
 		tempPath := videoPath + ".temp"
 
