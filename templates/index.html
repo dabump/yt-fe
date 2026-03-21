@@ -112,7 +112,7 @@
                     <button class="btn btn-danger btn-sm delete-btn" onclick="event.stopPropagation(); deleteVideo('{{.Filename}}')">&times;</button>
                     <img src="{{.Thumbnail}}" alt="{{.Name}}" class="card-img-top" onclick="openVideo('/video/{{.Filename}}')">
                     <div class="card-body">
-                        <p class="video-title mb-0">{{.Name}}</p>
+                        <p class="video-title mb-0">{{.Title}}</p>
                         <small class="text-muted">{{.Date.Format "Jan 02, 2006 15:04"}}</small>
                     </div>
                 </div>

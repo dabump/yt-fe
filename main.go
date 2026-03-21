@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -20,7 +21,15 @@ type Video struct {
 	Name      string
 	Filename  string
 	Thumbnail string
+	Title     string
 	Date      time.Time
+}
+
+type VideoMetadata struct {
+	Title        string `json:"title"`
+	VideoID      string `json:"video_id"`
+	URL          string `json:"url"`
+	DownloadedAt string `json:"downloaded_at"`
 }
 
 type PageData struct {
@@ -42,6 +51,7 @@ func main() {
 
 	os.MkdirAll("video", 0755)
 	os.MkdirAll("thumbnails", 0755)
+	os.MkdirAll("metadata", 0755)
 	os.MkdirAll("static", 0755)
 
 	generateMissingThumbnails()
@@ -105,6 +115,12 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	metadata, err := getVideoMetadata(url)
+	if err != nil {
+		serveIndex(w, r, "", fmt.Sprintf("Failed to get video metadata: %v", err))
+		return
+	}
+
 	filename := fmt.Sprintf("%s.mp4", uuid.New().String())
 	absPath, _ := filepath.Abs("video")
 	videoPath := filepath.Join(absPath, filename)
@@ -115,7 +131,7 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		serveIndex(w, r, "", fmt.Sprintf("Failed to download video: %v", err))
 		return
@@ -139,8 +155,51 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 	}
 	os.Remove(downloadedFile)
 
+	saveMetadata(filename, metadata)
 	generateThumbnail(videoPath, filename)
 	serveIndex(w, r, "Video downloaded successfully!", "")
+}
+
+func getVideoMetadata(url string) (VideoMetadata, error) {
+	cmd := exec.Command("yt-dlp", "--dump-json", "--no-download", url)
+	output, err := cmd.Output()
+	if err != nil {
+		return VideoMetadata{}, err
+	}
+
+	var data struct {
+		Title     string `json:"title"`
+		DisplayID string `json:"display_id"`
+	}
+	if err := json.Unmarshal(output, &data); err != nil {
+		return VideoMetadata{}, err
+	}
+
+	return VideoMetadata{
+		Title:        data.Title,
+		VideoID:      data.DisplayID,
+		URL:          url,
+		DownloadedAt: time.Now().Format(time.RFC3339),
+	}, nil
+}
+
+func saveMetadata(filename string, metadata VideoMetadata) {
+	absPath, _ := filepath.Abs("metadata")
+	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".mp4")+".json")
+	data, _ := json.MarshalIndent(metadata, "", "  ")
+	os.WriteFile(metadataPath, data, 0644)
+}
+
+func loadMetadata(filename string) VideoMetadata {
+	absPath, _ := filepath.Abs("metadata")
+	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".mp4")+".json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		return VideoMetadata{}
+	}
+	var metadata VideoMetadata
+	json.Unmarshal(data, &metadata)
+	return metadata
 }
 
 func convertToMP4(inputPath, outputPath string) error {
@@ -190,10 +249,16 @@ func getVideos() ([]Video, error) {
 			generateThumbnail(filepath.Join("video", entry.Name()), entry.Name())
 		}
 		info, _ := entry.Info()
+		metadata := loadMetadata(entry.Name())
+		title := metadata.Title
+		if title == "" {
+			title = strings.TrimSuffix(entry.Name(), ".mp4")
+		}
 		videos = append(videos, Video{
 			Name:      strings.TrimSuffix(entry.Name(), ".mp4"),
 			Filename:  entry.Name(),
 			Thumbnail: "/thumbnails/" + thumbName,
+			Title:     title,
 			Date:      info.ModTime(),
 		})
 	}
@@ -299,6 +364,9 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	videoPath := filepath.Join("video", videoName)
 	thumbName := strings.TrimSuffix(videoName, ".mp4") + ".jpg"
 	thumbPath := filepath.Join("thumbnails", thumbName)
+	metadataName := strings.TrimSuffix(videoName, ".mp4") + ".json"
+	metadataPath := filepath.Join("metadata", metadataName)
 	os.Remove(videoPath)
 	os.Remove(thumbPath)
+	os.Remove(metadataPath)
 }
