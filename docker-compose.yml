@@ -1,0 +1,17 @@
+services:
+  yt-fe:
+    build: .
+    container_name: yt-fe
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - VIDEO_DIR=${VIDEO_DIR:-video}
+      - THUMBNAILS_DIR=${THUMBNAILS_DIR:-thumbnails}
+      - METADATA_DIR=${METADATA_DIR:-metadata}
+      - STATIC_DIR=${STATIC_DIR:-static}
+    volumes:
+      - ${VIDEO_DIR:-./video}:/app/video
+      - ${THUMBNAILS_DIR:-./thumbnails}:/app/thumbnails
+      - ${METADATA_DIR:-./metadata}:/app/metadata
+      - ${STATIC_DIR:-./static}:/app/static
+    restart: unless-stopped
