@@ -163,7 +163,7 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func getVideoMetadata(url string) (VideoMetadata, error) {
-	cmd := exec.Command("yt-dlp", "--dump-json", "--no-download", url)
+	cmd := exec.Command("yt-dlp", "--dump-json", "--no-download", "--no-warnings", url)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		errMsg := string(output)
@@ -182,14 +182,22 @@ func getVideoMetadata(url string) (VideoMetadata, error) {
 	var data struct {
 		Title     string `json:"title"`
 		DisplayID string `json:"display_id"`
+		ID        string `json:"id"`
 	}
-	if err := json.Unmarshal(output, &data); err != nil {
+
+	jsonStr := strings.TrimSpace(string(output))
+	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
 		return VideoMetadata{}, fmt.Errorf("failed to parse video information")
+	}
+
+	videoID := data.DisplayID
+	if videoID == "" {
+		videoID = data.ID
 	}
 
 	return VideoMetadata{
 		Title:        data.Title,
-		VideoID:      data.DisplayID,
+		VideoID:      videoID,
 		URL:          url,
 		DownloadedAt: time.Now().Format(time.RFC3339),
 	}, nil

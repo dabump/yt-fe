@@ -5,149 +5,533 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>yt-fe - YouTube Frontend</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            overflow-x: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 20%, rgba(120, 119, 198, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 119, 198, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .navbar {
+            background: rgba(15, 15, 35, 0.7) !important;
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #ff0055, #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .btn-download {
+            background: linear-gradient(135deg, #ff0055, #ff6b6b);
+            border: none;
+            color: white;
+            font-weight: 600;
+            padding: 0.6rem 1.5rem;
+            border-radius: 50px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 0, 85, 0.3);
+        }
+        
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(255, 0, 85, 0.5);
+            color: white;
+        }
+        
+        .container {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .section-header h4 {
+            font-weight: 600;
+            font-size: 1.25rem;
+            color: #ffffff;
+        }
+        
+        .video-count {
+            background: rgba(255, 0, 85, 0.2);
+            color: #ff6b6b;
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        
         .video-card {
-            transition: transform 0.2s;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             cursor: pointer;
         }
+        
         .video-card:hover {
-            transform: scale(1.03);
+            transform: translateY(-8px);
+            border-color: rgba(255, 0, 85, 0.4);
+            box-shadow: 
+                0 20px 40px rgba(0, 0, 0, 0.4),
+                0 0 30px rgba(255, 0, 85, 0.15);
         }
+        
         .video-card img {
             aspect-ratio: 16/9;
             object-fit: cover;
             width: 100%;
-            background-color: #333;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
         }
-        .video-title {
-            font-size: 0.9rem;
+        
+        .video-card .card-content {
+            padding: 1rem;
+        }
+        
+        .video-card .video-title {
+            font-weight: 500;
+            font-size: 0.95rem;
+            color: #ffffff;
+            margin-bottom: 0.5rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
             overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            line-height: 1.4;
         }
-        .btn-download {
-            background: #ff0000;
-            border: none;
-            color: white;
+        
+        .video-card .video-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.5);
         }
-        .btn-download:hover {
-            background: #cc0000;
-            color: white;
+        
+        .video-card .delete-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 10;
         }
+        
+        .video-card:hover .delete-btn {
+            opacity: 1;
+        }
+        
+        .video-card .delete-btn:hover {
+            background: rgba(255, 0, 85, 0.8);
+            transform: scale(1.1);
+        }
+        
+        .video-card .play-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 80px);
+            background: rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .video-card:hover .play-overlay {
+            opacity: 1;
+        }
+        
+        .play-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(255, 0, 85, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            box-shadow: 0 0 30px rgba(255, 0, 85, 0.5);
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 5rem 2rem;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px dashed rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            margin: 2rem 0;
+        }
+        
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 1.5rem;
+            opacity: 0.5;
+        }
+        
+        .empty-state p {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 1rem;
+        }
+        
+        .alert {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #e0e0e0;
+            padding: 1rem 1.5rem;
+        }
+        
+        .alert-success {
+            border-color: rgba(0, 255, 136, 0.3);
+            background: rgba(0, 255, 136, 0.1);
+        }
+        
+        .alert-danger {
+            border-color: rgba(255, 0, 85, 0.3);
+            background: rgba(255, 0, 85, 0.1);
+        }
+        
+        .btn-close {
+            filter: invert(1);
+        }
+        
         .video-modal {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(20px);
             display: none;
             justify-content: center;
             align-items: center;
             z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
+        
         .video-modal.active {
             display: flex;
-        }
-        .video-modal video {
-            width: 75vw;
-            height: 75vh;
-            max-width: 100%;
-            max-height: 100%;
-        }
-        .video-modal .close-btn {
-            position: absolute;
-            top: 20px;
-            right: 30px;
-            font-size: 2rem;
-            color: white;
-            cursor: pointer;
-            background: none;
-            border: none;
-        }
-        .video-card .delete-btn {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            opacity: 0;
-            transition: opacity 0.2s;
-            z-index: 10;
-        }
-        .video-card:hover .delete-btn {
             opacity: 1;
         }
+        
+        .video-modal video {
+            width: 85vw;
+            max-width: 1400px;
+            border-radius: 16px;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+        }
+        
+        .video-modal .close-btn {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .video-modal .close-btn:hover {
+            background: rgba(255, 0, 85, 0.8);
+            transform: rotate(90deg);
+        }
+        
+        .modal-content {
+            background: rgba(20, 20, 40, 0.95) !important;
+            backdrop-filter: blur(30px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+        }
+        
+        .modal-header {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1.5rem;
+        }
+        
+        .modal-title {
+            font-weight: 600;
+            font-size: 1.25rem;
+        }
+        
+        .modal-body {
+            padding: 1.5rem;
+        }
+        
+        .modal-footer {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem 1.5rem;
+        }
+        
+        .form-control {
+            background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #fff !important;
+            padding: 0.875rem 1rem;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control:focus {
+            border-color: #ff0055;
+            box-shadow: 0 0 0 3px rgba(255, 0, 85, 0.2);
+        }
+        
+        .form-control::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+        
+        .form-label {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            border-radius: 50px;
+            padding: 0.6rem 1.5rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.3);
+            color: #fff;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
         .video-card {
-            position: relative;
+            animation: fadeInUp 0.5s ease forwards;
+        }
+        
+        .video-card:nth-child(1) { animation-delay: 0.05s; }
+        .video-card:nth-child(2) { animation-delay: 0.1s; }
+        .video-card:nth-child(3) { animation-delay: 0.15s; }
+        .video-card:nth-child(4) { animation-delay: 0.2s; }
+        .video-card:nth-child(5) { animation-delay: 0.25s; }
+        .video-card:nth-child(6) { animation-delay: 0.3s; }
+        .video-card:nth-child(7) { animation-delay: 0.35s; }
+        .video-card:nth-child(8) { animation-delay: 0.4s; }
+        
+        @media (max-width: 768px) {
+            .video-grid {
+                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+                gap: 1rem;
+            }
+            
+            .video-modal video {
+                width: 95vw;
+                border-radius: 8px;
+            }
+            
+            .video-modal .close-btn {
+                top: 15px;
+                right: 15px;
+                width: 40px;
+                height: 40px;
+            }
         }
     </style>
 </head>
-<body class="bg-dark text-white">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-black">
+<body>
+    <nav class="navbar">
         <div class="container">
-            <a class="navbar-brand" href="/">yt-fe</a>
-            <button class="btn btn-download" onclick="showDownloadModal()">+ Download Video</button>
+            <a class="navbar-brand" href="/">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: middle; margin-right: 8px;">
+                    <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+                </svg>
+                yt-fe
+            </a>
+            <button class="btn btn-download" onclick="showDownloadModal()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 6px;">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Download
+            </button>
         </div>
     </nav>
 
     <div class="container mt-4">
         {{if .Success}}
         <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 8px;">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
             {{.Success}}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
         {{end}}
         {{if .Error}}
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 8px;">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
             {{.Error}}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
         {{end}}
 
-        <h4 class="mb-3">Videos ({{len .Videos}})</h4>
+        <div class="section-header">
+            <h4>Your Videos</h4>
+            <span class="video-count">{{len .Videos}} videos</span>
+        </div>
+        
         {{if .Videos}}
-        <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
+        <div class="video-grid">
             {{range .Videos}}
-            <div class="col">
-                <div class="card bg-secondary video-card h-100">
-                    <button class="btn btn-danger btn-sm delete-btn" onclick="event.stopPropagation(); deleteVideo('{{.Filename}}')">&times;</button>
-                    <img src="{{.Thumbnail}}" alt="{{.Name}}" class="card-img-top" onclick="openVideo('/video/{{.Filename}}')">
-                    <div class="card-body">
-                        <p class="video-title mb-0">{{.Title}}</p>
-                        <small class="text-muted">{{.Date.Format "Jan 02, 2006 15:04"}}</small>
+            <div class="video-card" onclick="openVideo('/video/{{.Filename}}')">
+                <button class="delete-btn" onclick="event.stopPropagation(); deleteVideo('{{.Filename}}')">&times;</button>
+                <div style="position: relative;">
+                    <img src="{{.Thumbnail}}" alt="{{.Name}}">
+                    <div class="play-overlay">
+                        <div class="play-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                                <polygon points="5 3 19 12 5 21 5 3"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <p class="video-title">{{.Title}}</p>
+                    <div class="video-meta">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/>
+                            <line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        {{.Date.Format "Jan 02, 2006"}}
                     </div>
                 </div>
             </div>
             {{end}}
         </div>
         {{else}}
-        <div class="text-center py-5">
-            <p class="text-muted">No videos yet. Click "Download Video" to add your first video.</p>
+        <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="4" width="20" height="16" rx="2"/>
+                <polygon points="10 9 15 12 10 15 10 9" fill="currentColor"/>
+            </svg>
+            <p>No videos yet. Click "Download" to add your first video.</p>
         </div>
         {{end}}
     </div>
 
     <div class="video-modal" id="videoModal" onclick="closeVideo(event)">
-        <button class="close-btn" onclick="closeVideoBtn()">&times;</button>
+        <button class="close-btn" onclick="closeVideoBtn()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </button>
         <video id="videoPlayer" controls autoplay></video>
     </div>
 
     <div class="modal fade" id="downloadModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header border-secondary">
+            <div class="modal-content">
+                <div class="modal-header">
                     <h5 class="modal-title">Download YouTube Video</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form action="/download" method="POST">
                     <div class="modal-body">
                         <label for="url" class="form-label">YouTube URL</label>
-                        <input type="text" class="form-control bg-secondary text-white" id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." required>
+                        <input type="text" class="form-control" id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." required>
                         <div id="downloadStatus" class="mt-3 d-none">
-                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                            <span>Downloading...</span>
+                            <div class="spinner-border spinner-border-sm text-danger" role="status"></div>
+                            <span style="margin-left: 8px;">Downloading...</span>
                         </div>
                     </div>
-                    <div class="modal-footer border-secondary">
+                    <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <button type="submit" class="btn btn-download" onclick="showDownloading()">Download</button>
                     </div>
@@ -172,10 +556,10 @@
         }
 
         function openVideo(src) {
-            const modal = document.getElementById('videoModal');
+            const modalEl = document.getElementById('videoModal');
             const player = document.getElementById('videoPlayer');
             player.src = src;
-            modal.classList.add('active');
+            modalEl.classList.add('active');
             player.play();
         }
 
@@ -186,11 +570,11 @@
         }
 
         function closeVideoBtn() {
-            const modal = document.getElementById('videoModal');
+            const modalEl = document.getElementById('videoModal');
             const player = document.getElementById('videoPlayer');
             player.pause();
             player.src = '';
-            modal.classList.remove('active');
+            modalEl.classList.remove('active');
         }
 
         document.addEventListener('keydown', (e) => {
