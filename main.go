@@ -109,6 +109,8 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	url = cleanYouTubeURL(url)
+
 	videoID := extractVideoID(url)
 	if videoID == "" {
 		serveIndex(w, r, "", "Invalid YouTube URL")
@@ -286,6 +288,17 @@ func extractVideoID(url string) string {
 		}
 	}
 	return ""
+}
+
+func cleanYouTubeURL(rawURL string) string {
+	videoID := extractVideoID(rawURL)
+	if videoID == "" {
+		return rawURL
+	}
+	if strings.Contains(rawURL, "youtu.be/") {
+		return "https://youtu.be/" + videoID
+	}
+	return "https://www.youtube.com/watch?v=" + videoID
 }
 
 func generateThumbnail(videoPath, filename string) {
