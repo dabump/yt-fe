@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,10 +34,32 @@ type VideoMetadata struct {
 }
 
 type PageData struct {
-	Videos  []Video
-	Error   string
-	Success string
+	Videos      []Video
+	Error       string
+	Success     string
+	Downloading bool
+	QueueCount  int
 }
+
+type DownloadJob struct {
+	URL      string
+	VideoID  string
+	Filename string
+}
+
+type DownloadStatus struct {
+	Current    *DownloadJob
+	Queue      []DownloadJob
+	Processing bool
+	Progress   float64
+}
+
+var (
+	downloadQueue   []DownloadJob
+	downloadStatus  DownloadStatus
+	queueMutex      sync.Mutex
+	currentDownload *DownloadJob
+)
 
 func main() {
 	if _, err := exec.LookPath("yt-dlp"); err != nil {
@@ -64,6 +87,9 @@ func main() {
 	http.HandleFunc("/thumbnails/", thumbnailHandler)
 	http.HandleFunc("/video/", videoHandler)
 	http.HandleFunc("/delete/", deleteHandler)
+	http.HandleFunc("/api/status", apiStatusHandler)
+
+	go processDownloadQueue()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -124,42 +150,18 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filename := fmt.Sprintf("%s.mp4", uuid.New().String())
-	absPath, _ := filepath.Abs("video")
-	videoPath := filepath.Join(absPath, filename)
-	tempPath := videoPath + ".temp"
 
-	outputTemplate := tempPath + ".%(ext)s"
-	cmd := exec.Command("yt-dlp", "-f", "bestvideo+bestaudio/best", "-o", outputTemplate, url)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	queueMutex.Lock()
+	downloadQueue = append(downloadQueue, DownloadJob{
+		URL:      url,
+		VideoID:  videoID,
+		Filename: filename,
+	})
+	downloadStatus.Queue = downloadQueue
+	queueMutex.Unlock()
 
-	err = cmd.Run()
-	if err != nil {
-		serveIndex(w, r, "", "Failed to download video. The video may be age-restricted, region-locked, or require authentication.")
-		return
-	}
-
-	downloadedFile := tempPath + ".mkv"
-	if _, err := os.Stat(downloadedFile); os.IsNotExist(err) {
-		files, _ := os.ReadDir(absPath)
-		for _, f := range files {
-			if strings.HasPrefix(f.Name(), filename+".temp.") {
-				downloadedFile = filepath.Join(absPath, f.Name())
-				break
-			}
-		}
-	}
-
-	if err := convertToMP4(downloadedFile, videoPath); err != nil {
-		os.Remove(downloadedFile)
-		serveIndex(w, r, "", fmt.Sprintf("Failed to convert video to MP4: %v", err))
-		return
-	}
-	os.Remove(downloadedFile)
-
-	saveMetadata(filename, metadata)
-	generateThumbnail(videoPath, filename)
-	serveIndex(w, r, "Video downloaded successfully!", "")
+	_ = metadata
+	serveIndex(w, r, "Video added to download queue!", "")
 }
 
 func getVideoMetadata(url string) (VideoMetadata, error) {
@@ -400,4 +402,107 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	os.Remove(videoPath)
 	os.Remove(thumbPath)
 	os.Remove(metadataPath)
+}
+
+func processDownloadQueue() {
+	for {
+		queueMutex.Lock()
+		if len(downloadQueue) == 0 {
+			downloadStatus.Processing = false
+			downloadStatus.Current = nil
+			downloadStatus.Queue = []DownloadJob{}
+			queueMutex.Unlock()
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		job := downloadQueue[0]
+		downloadQueue = downloadQueue[1:]
+		downloadStatus.Queue = downloadQueue
+		downloadStatus.Processing = true
+		downloadStatus.Current = &job
+		downloadStatus.Progress = 0
+		queueMutex.Unlock()
+
+		fmt.Printf("Processing download: %s\n", job.URL)
+
+		metadata, err := getVideoMetadata(job.URL)
+		if err != nil {
+			fmt.Printf("Failed to get metadata for %s: %v\n", job.URL, err)
+			continue
+		}
+
+		absPath, _ := filepath.Abs("video")
+		videoPath := filepath.Join(absPath, job.Filename)
+		tempPath := videoPath + ".temp"
+
+		outputTemplate := tempPath + ".%(ext)s"
+		cmd := exec.Command("yt-dlp", "-f", "bestvideo+bestaudio/best", "-o", outputTemplate, job.URL)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		err = cmd.Run()
+		if err != nil {
+			fmt.Printf("Failed to download %s: %v\n", job.URL, err)
+			continue
+		}
+
+		downloadMutex.Lock()
+		downloadStatus.Progress = 50
+		downloadMutex.Unlock()
+
+		downloadedFile := tempPath + ".mkv"
+		if _, err := os.Stat(downloadedFile); os.IsNotExist(err) {
+			files, _ := os.ReadDir(absPath)
+			for _, f := range files {
+				if strings.HasPrefix(f.Name(), job.Filename+".temp.") {
+					downloadedFile = filepath.Join(absPath, f.Name())
+					break
+				}
+			}
+		}
+
+		if err := convertToMP4(downloadedFile, videoPath); err != nil {
+			fmt.Printf("Failed to convert %s: %v\n", job.URL, err)
+			os.Remove(downloadedFile)
+			continue
+		}
+		os.Remove(downloadedFile)
+
+		downloadMutex.Lock()
+		downloadStatus.Progress = 75
+		downloadMutex.Unlock()
+
+		saveMetadata(job.Filename, metadata)
+		generateThumbnail(videoPath, job.Filename)
+
+		downloadMutex.Lock()
+		downloadStatus.Progress = 100
+		downloadMutex.Unlock()
+
+		fmt.Printf("Download complete: %s\n", job.Filename)
+
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+var downloadMutex sync.Mutex
+
+func apiStatusHandler(w http.ResponseWriter, r *http.Request) {
+	queueMutex.Lock()
+	status := struct {
+		Processing bool          `json:"processing"`
+		Current    *DownloadJob  `json:"current"`
+		Queue      []DownloadJob `json:"queue"`
+		Progress   float64       `json:"progress"`
+	}{
+		Processing: downloadStatus.Processing,
+		Current:    downloadStatus.Current,
+		Queue:      downloadStatus.Queue,
+		Progress:   downloadStatus.Progress,
+	}
+	queueMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
 }
