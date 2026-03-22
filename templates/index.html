@@ -211,6 +211,34 @@
             transform: scale(1.1);
         }
         
+        .video-card .download-btn {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+        
+        .video-card:hover .download-btn {
+            opacity: 1;
+        }
+        
+        .video-card .download-btn:hover {
+            background: rgba(0, 255, 136, 0.8);
+            transform: scale(1.1);
+        }
+        
         .video-card .thumbnail-wrapper {
             position: relative;
         }
@@ -606,6 +634,13 @@
         <div class="video-grid">
             {{range .Videos}}
             <div class="video-card" onclick="openVideo('/video/{{.Filename}}')">
+                <a class="download-btn" href="/video/{{.Filename}}" download="{{.Title}}" onclick="event.stopPropagation()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                </a>
                 <button class="delete-btn" onclick="event.stopPropagation(); deleteVideo('{{.Filename}}')">&times;</button>
                 <div class="thumbnail-wrapper">
                     <img src="{{.Thumbnail}}" alt="{{.Name}}">
