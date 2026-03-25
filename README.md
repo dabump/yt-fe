@@ -33,11 +33,8 @@ A self-hosted YouTube video downloader and viewer frontend. Download YouTube vid
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone git@github.com:dabump/yt-fe.git
 cd yt-fe
-
-# Copy environment template
-cp .env.example .env
 
 # Build and start the application
 docker-compose up --build
