@@ -49,11 +49,13 @@ The application will be available at `http://localhost:8080`
 ### Install Dependencies
 
 **yt-dlp:**
+
 ```bash
 pip install yt-dlp
 ```
 
 **ffmpeg:**
+
 ```bash
 # macOS
 brew install ffmpeg
@@ -90,24 +92,23 @@ make run
 
 Environment variables (defaults shown):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `8080` | HTTP server port |
-| `VIDEO_DIR` | `video` | Directory for downloaded videos |
-| `THUMBNAILS_DIR` | `thumbnails` | Directory for video thumbnails |
-| `METADATA_DIR` | `metadata` | Directory for video metadata JSON |
-| `STATIC_DIR` | `static` | Directory for static files |
+| Variable         | Default      | Description                       |
+| ---------------- | ------------ | --------------------------------- |
+| `PORT`           | `8080`       | HTTP server port                  |
+| `VIDEO_DIR`      | `video`      | Directory for downloaded videos   |
+| `THUMBNAILS_DIR` | `thumbnails` | Directory for video thumbnails    |
+| `METADATA_DIR`   | `metadata`   | Directory for video metadata JSON |
 
 ## API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET/POST | Main page (download form) |
-| `/download` | POST | Add video to download queue |
-| `/video/{filename}` | GET | Stream video file |
-| `/thumbnails/{filename}` | GET | Serve thumbnail image |
-| `/delete/{filename}` | POST | Delete video and related files |
-| `/api/status` | GET | JSON status of download queue |
+| Endpoint                 | Method   | Description                    |
+| ------------------------ | -------- | ------------------------------ |
+| `/`                      | GET/POST | Main page (download form)      |
+| `/download`              | POST     | Add video to download queue    |
+| `/video/{filename}`      | GET      | Stream video file              |
+| `/thumbnails/{filename}` | GET      | Serve thumbnail image          |
+| `/delete/{filename}`     | POST     | Delete video and related files |
+| `/api/status`            | GET      | JSON status of download queue  |
 
 ## Project Structure
 
@@ -123,7 +124,6 @@ yt-fe/
 ├── .env.example      # Environment variables template
 ├── templates/
 │   └── index.html    # Main HTML template
-└── static/           # Static files directory
 ```
 
 ## Tech Stack

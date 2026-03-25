@@ -5,6 +5,7 @@ RUN apk add --no-cache git
 WORKDIR /build
 
 COPY go.mod go.sum ./
+
 RUN go mod download
 
 COPY . .
@@ -19,12 +20,15 @@ RUN apk add --no-cache ffmpeg python3 py3-pip && \
 WORKDIR /app
 
 COPY --from=builder /build/yt-fe /app/yt-fe
+
 COPY --from=builder /build/templates /app/templates
-COPY --from=builder /build/static /app/static
+
 COPY entrypoint.sh /app/entrypoint.sh
+
 RUN chmod +x /app/entrypoint.sh
 
-RUN mkdir -p /app/video /app/thumbnails /app/metadata /app/static
+RUN mkdir -p /app/video /app/thumbnails /app/metadata
 
 ENTRYPOINT ["/app/entrypoint.sh"]
+
 CMD ["/app/yt-fe"]

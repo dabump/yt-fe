@@ -59,7 +59,6 @@ type Config struct {
 	VideoDir      string `yaml:"video_dir"`
 	ThumbnailsDir string `yaml:"thumbnails_dir"`
 	MetadataDir   string `yaml:"metadata_dir"`
-	StaticDir     string `yaml:"static_dir"`
 }
 
 var config Config
@@ -71,7 +70,6 @@ func loadConfig() Config {
 			VideoDir:      "video",
 			ThumbnailsDir: "thumbnails",
 			MetadataDir:   "metadata",
-			StaticDir:     "static",
 		}
 	}
 	var cfg Config
@@ -80,7 +78,6 @@ func loadConfig() Config {
 			VideoDir:      "video",
 			ThumbnailsDir: "thumbnails",
 			MetadataDir:   "metadata",
-			StaticDir:     "static",
 		}
 	}
 	return cfg
@@ -106,15 +103,11 @@ func main() {
 
 	config = loadConfig()
 
-	os.MkdirAll(config.VideoDir, 0755)
-	os.MkdirAll(config.ThumbnailsDir, 0755)
-	os.MkdirAll(config.MetadataDir, 0755)
-	os.MkdirAll(config.StaticDir, 0755)
+	os.MkdirAll(config.VideoDir, 0o755)
+	os.MkdirAll(config.ThumbnailsDir, 0o755)
+	os.MkdirAll(config.MetadataDir, 0o755)
 
 	generateMissingThumbnails()
-
-	fs := http.FileServer(http.Dir(config.StaticDir))
-	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/download", downloadHandler)
@@ -243,7 +236,7 @@ func saveMetadata(filename string, metadata VideoMetadata) {
 	absPath, _ := filepath.Abs(config.MetadataDir)
 	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".webm")+".json")
 	data, _ := json.MarshalIndent(metadata, "", "  ")
-	os.WriteFile(metadataPath, data, 0644)
+	os.WriteFile(metadataPath, data, 0o644)
 }
 
 func loadMetadata(filename string) VideoMetadata {
@@ -357,7 +350,7 @@ func cleanYouTubeURL(rawURL string) string {
 
 func generateThumbnail(videoPath, filename string) {
 	absPath, _ := filepath.Abs(config.ThumbnailsDir)
-	os.MkdirAll(absPath, 0755)
+	os.MkdirAll(absPath, 0o755)
 	thumbName := strings.TrimSuffix(filename, ".webm") + ".jpg"
 	thumbPath := filepath.Join(absPath, thumbName)
 	fmt.Printf("Generating thumbnail: ffmpeg -y -i %s -ss 00:00:01 -vframes 1 -q:v 2 %s\n", videoPath, thumbPath)
