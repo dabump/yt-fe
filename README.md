@@ -4,6 +4,8 @@
 
 A self-hosted YouTube video downloader and viewer frontend. Download YouTube videos, store them locally, and stream them through a modern web interface.
 
+![Screenshot](assets/example.png)
+
 ## Features
 
 - Download YouTube videos via URL
