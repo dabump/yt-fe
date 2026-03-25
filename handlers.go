@@ -311,7 +311,6 @@ func processDownloadQueue() {
 			downloadStatus.Current = nil
 			downloadStatus.Queue = []DownloadJob{}
 			queueMutex.Unlock()
-			time.Sleep(500 * time.Millisecond)
 			continue
 		}
 
@@ -384,8 +383,6 @@ func processDownloadQueue() {
 		downloadMutex.Unlock()
 
 		fmt.Printf("Download complete: %s\n", job.Filename)
-
-		time.Sleep(100 * time.Millisecond)
 	}
 }
 

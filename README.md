@@ -1,5 +1,7 @@
 # yt-fe
 
+> **Warning:** This application was created with the assistance of an AI coding agent. Use at your own risk.
+
 A self-hosted YouTube video downloader and viewer frontend. Download YouTube videos, store them locally, and stream them through a modern web interface.
 
 ## Features
