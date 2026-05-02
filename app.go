@@ -14,6 +14,7 @@ type App struct {
 
 	jobs          chan DownloadJob
 	statusMutex   sync.Mutex
+	tagMutex      sync.Mutex
 	pendingJobs   []DownloadJob
 	downloadState DownloadStatus
 }
@@ -33,12 +34,12 @@ func NewApp(cfg Config) (*App, error) {
 }
 
 func (app *App) ensureDirectories() error {
-	for _, dir := range []string{app.config.VideoDir, app.config.ThumbnailsDir, app.config.MetadataDir} {
+	for _, dir := range []string{app.config.VideoDir, app.config.ThumbnailsDir, app.config.MetadataDir, tagsDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 	}
-	return nil
+	return app.ensureTagsFile()
 }
 
 func (app *App) enqueueDownload(job DownloadJob) {

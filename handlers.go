@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -96,6 +97,112 @@ func (app *App) formatsHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(formats); err != nil {
 		log.Printf("Failed to encode formats response: %v", err)
 	}
+}
+
+func (app *App) tagsHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		tags, err := app.loadTags()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, TagsFile{Tags: tags})
+	case http.MethodPost:
+		var request struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		tags, err := app.createTag(request.Name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, TagsFile{Tags: tags})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (app *App) tagHandler(w http.ResponseWriter, r *http.Request) {
+	tag, err := pathValue(r.URL.Path, "/api/tags/")
+	if err != nil {
+		http.Error(w, "invalid tag", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		var request struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		tags, err := app.renameTag(tag, request.Name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, TagsFile{Tags: tags})
+	case http.MethodDelete:
+		tags, err := app.deleteTag(tag)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, TagsFile{Tags: tags})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (app *App) videoTagsHandler(w http.ResponseWriter, r *http.Request) {
+	filename, err := pathValue(r.URL.Path, "/api/video-tags/")
+	if err != nil {
+		http.Error(w, "invalid filename", http.StatusBadRequest)
+		return
+	}
+	filename = filepath.Base(filename)
+
+	switch r.Method {
+	case http.MethodGet:
+		metadata := app.loadMetadata(filename)
+		writeJSON(w, TagsFile{Tags: normalizeTags(metadata.Tags)})
+	case http.MethodPost:
+		var request TagsFile
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		tags, err := app.updateVideoTags(filename, request.Tags)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, TagsFile{Tags: tags})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func writeJSON(w http.ResponseWriter, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		log.Printf("Failed to encode JSON response: %v", err)
+	}
+}
+
+func pathValue(path, prefix string) (string, error) {
+	value := strings.TrimPrefix(path, prefix)
+	if value == "" || value == path {
+		return "", fmt.Errorf("missing path value")
+	}
+	return neturl.PathUnescape(value)
 }
 
 func getVideoFormats(url string) (VideoFormatsResponse, error) {
@@ -220,6 +327,10 @@ func getVideoMetadata(url string) (VideoMetadata, error) {
 }
 
 func (app *App) saveMetadata(filename string, metadata VideoMetadata) error {
+	return app.saveMetadataByFilename(filename, metadata)
+}
+
+func (app *App) saveMetadataByFilename(filename string, metadata VideoMetadata) error {
 	absPath, err := filepath.Abs(app.config.MetadataDir)
 	if err != nil {
 		return err
@@ -233,20 +344,28 @@ func (app *App) saveMetadata(filename string, metadata VideoMetadata) error {
 }
 
 func (app *App) loadMetadata(filename string) VideoMetadata {
-	absPath, err := filepath.Abs(app.config.MetadataDir)
+	metadata, err := app.loadMetadataByFilename(filename)
 	if err != nil {
 		return VideoMetadata{}
+	}
+	return metadata
+}
+
+func (app *App) loadMetadataByFilename(filename string) (VideoMetadata, error) {
+	absPath, err := filepath.Abs(app.config.MetadataDir)
+	if err != nil {
+		return VideoMetadata{}, err
 	}
 	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".webm")+".json")
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
-		return VideoMetadata{}
+		return VideoMetadata{}, err
 	}
 	var metadata VideoMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
-		return VideoMetadata{}
+		return VideoMetadata{}, err
 	}
-	return metadata
+	return metadata, nil
 }
 
 func convertToWebm(inputPath, outputPath string) error {
@@ -261,9 +380,14 @@ func (app *App) serveIndex(w http.ResponseWriter, r *http.Request, success, errM
 	if err != nil {
 		errMsg = fmt.Sprintf("Error reading videos: %v", err)
 	}
+	tags, err := app.loadTags()
+	if err != nil {
+		errMsg = fmt.Sprintf("Error reading tags: %v", err)
+	}
 
 	data := PageData{
 		Videos:  videos,
+		Tags:    tags,
 		Error:   errMsg,
 		Success: success,
 	}
@@ -304,6 +428,8 @@ func (app *App) getVideos() ([]Video, error) {
 			Thumbnail: "/thumbnails/" + thumbName,
 			Title:     title,
 			Date:      info.ModTime(),
+			Tags:      metadata.Tags,
+			TagsData:  strings.ToLower(strings.Join(metadata.Tags, ",")),
 		})
 	}
 

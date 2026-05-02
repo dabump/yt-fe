@@ -12,4 +12,5 @@ services:
       - ${VIDEO_DIR:-./video}:/app/video
       - ${THUMBNAILS_DIR:-./thumbnails}:/app/thumbnails
       - ${METADATA_DIR:-./metadata}:/app/metadata
+      - ./tags:/app/tags
     restart: unless-stopped

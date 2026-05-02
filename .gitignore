@@ -2,6 +2,7 @@
 video/
 thumbnails/
 metadata/
+tags/
 
 # Go
 *.exe

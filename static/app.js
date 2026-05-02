@@ -1,10 +1,17 @@
 let downloadModal;
+let tagManagerModal;
+let videoTagsModal;
 let wasProcessing = false;
 let formatsLoadedForURL = "";
+let allTags = [];
+let activeTagFilters = new Set();
 
 document.addEventListener("DOMContentLoaded", () => {
     const modalEl = document.getElementById("downloadModal");
+    const tagManagerEl = document.getElementById("tagManagerModal");
+    const videoTagsEl = document.getElementById("videoTagsModal");
     const downloadForm = document.getElementById("downloadForm");
+    const tagCreateForm = document.getElementById("tagCreateForm");
     const videoSearchInput = document.getElementById("videoSearch");
 
     if (modalEl) {
@@ -15,9 +22,21 @@ document.addEventListener("DOMContentLoaded", () => {
         modalEl.addEventListener("hidden.bs.modal", resetDownloadForm);
     }
 
+    if (tagManagerEl) {
+        tagManagerModal = new bootstrap.Modal(tagManagerEl);
+    }
+
+    if (videoTagsEl) {
+        videoTagsModal = new bootstrap.Modal(videoTagsEl);
+    }
+
     if (downloadForm) {
         downloadForm.addEventListener("submit", submitDownloadForm);
         downloadForm.querySelector('input[name="url"]')?.addEventListener("input", resetFormatSelection);
+    }
+
+    if (tagCreateForm) {
+        tagCreateForm.addEventListener("submit", createTag);
     }
 
     if (videoSearchInput) {
@@ -28,6 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (event.key === "Escape") closeVideoBtn();
     });
 
+    loadTags();
     startStatusPolling();
 });
 
@@ -215,14 +235,254 @@ function filterVideos() {
 
     videoCards.forEach(card => {
         const title = card.querySelector(".video-title").textContent.toLowerCase();
+        const tags = (card.dataset.tags || "").split(",").filter(Boolean);
         const matches = searchTerms.length === 0 || searchTerms.some(term => title.includes(term));
-        card.style.display = matches ? "" : "none";
-        if (matches) visibleCount++;
+        const matchesTags = [...activeTagFilters].every(tag => tags.includes(tag.toLowerCase()));
+        card.style.display = matches && matchesTags ? "" : "none";
+        if (matches && matchesTags) visibleCount++;
     });
 
     const totalCount = videoCards.length;
     const filteredText = searchTerms.length > 0 ? `, ${visibleCount} showing` : "";
     videoCountEl.textContent = `${totalCount} videos${filteredText}`;
+}
+
+function toggleTagFilter(button) {
+    const tag = button.dataset.tag.toLowerCase();
+    if (activeTagFilters.has(tag)) {
+        activeTagFilters.delete(tag);
+        button.classList.remove("active");
+    } else {
+        activeTagFilters.add(tag);
+        button.classList.add("active");
+    }
+    filterVideos();
+}
+
+function openTagManager() {
+    clearTagErrors();
+    loadTags().then(() => tagManagerModal?.show());
+}
+
+function loadTags() {
+    return fetch("/api/tags")
+        .then(response => response.json())
+        .then(data => {
+            allTags = data.tags || [];
+            renderTagManager();
+            renderTagFilters();
+            return allTags;
+        })
+        .catch(error => {
+            showTagManagerError(error.message || "Failed to load tags.");
+            return [];
+        });
+}
+
+function createTag(event) {
+    event.preventDefault();
+    const input = document.getElementById("newTagName");
+    const name = input.value.trim();
+    if (!name) return;
+
+    fetch("/api/tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+    })
+        .then(handleTagResponse)
+        .then(data => {
+            input.value = "";
+            allTags = data.tags || [];
+            renderTagManager();
+            renderTagFilters();
+            clearTagErrors();
+        })
+        .catch(error => showTagManagerError(error.message));
+}
+
+function renameTag(oldName) {
+    const name = prompt("Rename tag", oldName);
+    if (!name || name.trim() === oldName) return;
+
+    fetch(`/api/tags/${encodeURIComponent(oldName)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+    })
+        .then(handleTagResponse)
+        .then(data => {
+            allTags = data.tags || [];
+            activeTagFilters.clear();
+            renderTagManager();
+            renderTagFilters();
+            clearTagErrors();
+            location.reload();
+        })
+        .catch(error => showTagManagerError(error.message));
+}
+
+function deleteTag(name) {
+    if (!confirm(`Delete tag "${name}" and remove it from all videos?`)) return;
+
+    fetch(`/api/tags/${encodeURIComponent(name)}`, { method: "DELETE" })
+        .then(handleTagResponse)
+        .then(data => {
+            allTags = data.tags || [];
+            activeTagFilters.delete(name.toLowerCase());
+            renderTagManager();
+            renderTagFilters();
+            clearTagErrors();
+            location.reload();
+        })
+        .catch(error => showTagManagerError(error.message));
+}
+
+function renderTagManager() {
+    const tagList = document.getElementById("tagList");
+    if (!tagList) return;
+
+    tagList.innerHTML = "";
+    if (allTags.length === 0) {
+        tagList.innerHTML = '<p class="format-help">No tags yet. Create one to start organizing videos.</p>';
+        return;
+    }
+
+    allTags.forEach(tag => {
+        const row = document.createElement("div");
+        row.className = "tag-row";
+        row.innerHTML = `
+            <span>${escapeHTML(tag)}</span>
+            <div>
+                <button type="button" class="secondary-action" onclick="renameTag('${escapeJS(tag)}')">Rename</button>
+                <button type="button" class="secondary-action danger" onclick="deleteTag('${escapeJS(tag)}')">Delete</button>
+            </div>
+        `;
+        tagList.appendChild(row);
+    });
+}
+
+function renderTagFilters() {
+    const tagFilter = document.getElementById("tagFilter");
+    if (!tagFilter) return;
+
+    tagFilter.innerHTML = "";
+    allTags.forEach(tag => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "tag-filter-chip";
+        button.dataset.tag = tag;
+        button.textContent = tag;
+        if (activeTagFilters.has(tag.toLowerCase())) {
+            button.classList.add("active");
+        }
+        button.addEventListener("click", () => toggleTagFilter(button));
+        tagFilter.appendChild(button);
+    });
+    filterVideos();
+}
+
+function openVideoTags(button) {
+    const filename = button.dataset.filename;
+    const title = button.dataset.title;
+    document.getElementById("videoTagsFilename").value = filename;
+    document.getElementById("videoTagsTitle").textContent = `Tags for ${title}`;
+    clearVideoTagError();
+
+    Promise.all([
+        loadTags(),
+        fetch(`/api/video-tags/${encodeURIComponent(filename)}`).then(response => response.json()),
+    ])
+        .then(([, data]) => {
+            renderVideoTagChoices(data.tags || []);
+            videoTagsModal?.show();
+        })
+        .catch(error => showVideoTagError(error.message || "Failed to load video tags."));
+}
+
+function renderVideoTagChoices(selectedTags) {
+    const list = document.getElementById("videoTagsList");
+    list.innerHTML = "";
+
+    if (allTags.length === 0) {
+        list.innerHTML = '<p class="format-help">No tags exist yet. Create tags from the Tags button first.</p>';
+        return;
+    }
+
+    const selected = new Set(selectedTags.map(tag => tag.toLowerCase()));
+    allTags.forEach(tag => {
+        const label = document.createElement("label");
+        label.className = "tag-checkbox";
+        label.innerHTML = `
+            <input type="checkbox" value="${escapeHTML(tag)}" ${selected.has(tag.toLowerCase()) ? "checked" : ""}>
+            <span>${escapeHTML(tag)}</span>
+        `;
+        list.appendChild(label);
+    });
+}
+
+function saveVideoTags() {
+    const filename = document.getElementById("videoTagsFilename").value;
+    const selectedTags = [...document.querySelectorAll('#videoTagsList input[type="checkbox"]:checked')].map(input => input.value);
+
+    fetch(`/api/video-tags/${encodeURIComponent(filename)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: selectedTags }),
+    })
+        .then(handleTagResponse)
+        .then(() => location.reload())
+        .catch(error => showVideoTagError(error.message));
+}
+
+function handleTagResponse(response) {
+    if (!response.ok) {
+        return response.text().then(message => {
+            throw new Error(message || "Tag request failed.");
+        });
+    }
+    return response.json();
+}
+
+function showTagManagerError(message) {
+    const error = document.getElementById("tagManagerError");
+    if (!error) return;
+    error.textContent = message;
+    error.hidden = false;
+}
+
+function clearTagErrors() {
+    const error = document.getElementById("tagManagerError");
+    if (!error) return;
+    error.textContent = "";
+    error.hidden = true;
+}
+
+function showVideoTagError(message) {
+    const error = document.getElementById("videoTagsError");
+    if (!error) return;
+    error.textContent = message;
+    error.hidden = false;
+}
+
+function clearVideoTagError() {
+    const error = document.getElementById("videoTagsError");
+    if (!error) return;
+    error.textContent = "";
+    error.hidden = true;
+}
+
+function escapeHTML(value) {
+    return value.replace(/[&<>"]/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+    })[char]);
+}
+
+function escapeJS(value) {
+    return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
 function deleteVideo(filename) {

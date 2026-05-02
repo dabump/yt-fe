@@ -31,7 +31,7 @@ COPY entrypoint.sh /app/entrypoint.sh
 
 RUN chmod +x /app/entrypoint.sh
 
-RUN mkdir -p /app/video /app/thumbnails /app/metadata
+RUN mkdir -p /app/video /app/thumbnails /app/metadata /app/tags
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 

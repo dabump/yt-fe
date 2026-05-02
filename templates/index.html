@@ -21,12 +21,15 @@
                 </span>
                 <span>yt-fe</span>
             </a>
-            <button class="primary-action" type="button" onclick="showDownloadModal()">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
-                </svg>
-                Add Video
-            </button>
+            <div class="topbar-actions">
+                <button class="secondary-action" type="button" onclick="openTagManager()">Tags</button>
+                <button class="primary-action" type="button" onclick="showDownloadModal()">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
+                    </svg>
+                    Add Video
+                </button>
+            </div>
         </header>
 
         <main>
@@ -70,19 +73,26 @@
                         <p class="eyebrow">Now watching</p>
                         <h2>Library</h2>
                     </div>
-                    <label class="search-box" for="videoSearch">
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <circle cx="11" cy="11" r="7"></circle>
-                            <path d="m16.5 16.5 4 4"></path>
-                        </svg>
-                        <input type="search" id="videoSearch" placeholder="Search videos">
-                    </label>
+                    <div class="library-controls">
+                        <label class="search-box" for="videoSearch">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <circle cx="11" cy="11" r="7"></circle>
+                                <path d="m16.5 16.5 4 4"></path>
+                            </svg>
+                            <input type="search" id="videoSearch" placeholder="Search videos">
+                        </label>
+                        <div class="tag-filter" id="tagFilter">
+                            {{range .Tags}}
+                            <button class="tag-filter-chip" type="button" data-tag="{{.}}" onclick="toggleTagFilter(this)">{{.}}</button>
+                            {{end}}
+                        </div>
+                    </div>
                 </div>
 
                 {{if .Videos}}
                 <div class="video-grid">
                     {{range .Videos}}
-                    <article class="video-card" onclick="openVideo('/video/{{.Filename}}')">
+                    <article class="video-card" data-tags="{{.TagsData}}" onclick="openVideo('/video/{{.Filename}}')">
                         <div class="thumbnail-frame">
                             <img src="{{.Thumbnail}}" alt="{{.Title}} thumbnail" loading="lazy">
                             <div class="thumbnail-gradient"></div>
@@ -92,6 +102,12 @@
                                 </svg>
                             </button>
                             <div class="card-actions">
+                                <button class="icon-action" type="button" data-filename="{{.Filename}}" data-title="{{.Title}}" onclick="event.stopPropagation(); openVideoTags(this)" aria-label="Edit tags for {{.Title}}">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M20.59 13.41 12 22l-9-9V4h9l8.59 8.59a2 2 0 0 1 0 2.82Z"></path>
+                                        <circle cx="7.5" cy="8.5" r="1.5"></circle>
+                                    </svg>
+                                </button>
                                 <a class="icon-action" href="/video/{{.Filename}}" download="{{.Title}}" onclick="event.stopPropagation()" aria-label="Download {{.Title}}">
                                     <svg viewBox="0 0 24 24" aria-hidden="true">
                                         <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
@@ -107,6 +123,11 @@
                         <div class="card-body-content">
                             <h3 class="video-title">{{.Title}}</h3>
                             <p class="video-meta">Added {{.Date.Format "Jan 02, 2006"}}</p>
+                            {{if .Tags}}
+                            <div class="card-tags">
+                                {{range .Tags}}<span>{{.}}</span>{{end}}
+                            </div>
+                            {{end}}
                         </div>
                     </article>
                     {{end}}
@@ -183,6 +204,52 @@
                         <button type="submit" class="primary-action" id="downloadSubmit">Check Resolutions</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="tagManagerModal" tabindex="-1" aria-labelledby="tagManagerTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content app-modal">
+                <div class="modal-header">
+                    <div>
+                        <p class="eyebrow">Tag maintenance</p>
+                        <h5 class="modal-title" id="tagManagerTitle">Manage tags</h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form class="tag-create-form" id="tagCreateForm">
+                        <input type="text" class="form-control" id="newTagName" placeholder="New tag name" required>
+                        <button type="submit" class="primary-action">Create</button>
+                    </form>
+                    <div class="tag-list" id="tagList"></div>
+                    <p class="format-error" id="tagManagerError" hidden></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="videoTagsModal" tabindex="-1" aria-labelledby="videoTagsTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content app-modal">
+                <div class="modal-header">
+                    <div>
+                        <p class="eyebrow">Video tags</p>
+                        <h5 class="modal-title" id="videoTagsTitle">Assign tags</h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="videoTagsFilename">
+                    <div class="tag-checkbox-list" id="videoTagsList"></div>
+                    <p class="format-help" id="videoTagsHelp">Select one or more tags for this video.</p>
+                    <p class="format-error" id="videoTagsError" hidden></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="secondary-action" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="primary-action" onclick="saveVideoTags()">Save Tags</button>
+                </div>
             </div>
         </div>
     </div>

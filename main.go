@@ -37,6 +37,9 @@ func main() {
 	mux.HandleFunc("/video/", app.videoHandler)
 	mux.HandleFunc("/delete/", app.deleteHandler)
 	mux.HandleFunc("/api/formats", app.formatsHandler)
+	mux.HandleFunc("/api/tags", app.tagsHandler)
+	mux.HandleFunc("/api/tags/", app.tagHandler)
+	mux.HandleFunc("/api/video-tags/", app.videoTagsHandler)
 	mux.HandleFunc("/api/status", app.apiStatusHandler)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 

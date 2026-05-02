@@ -11,6 +11,7 @@ A self-hosted YouTube video downloader and viewer frontend. Download YouTube vid
 - Download YouTube videos via URL
 - Stream videos directly in-browser
 - Video library with thumbnails and search
+- Tag maintenance, assignment, and filtering
 - Automatic thumbnail generation
 - Video conversion to WebM format
 - Delete videos with associated files
@@ -99,6 +100,7 @@ Environment variables (defaults shown):
 | `VIDEO_DIR`      | `video`      | Directory for downloaded videos   |
 | `THUMBNAILS_DIR` | `thumbnails` | Directory for video thumbnails    |
 | `METADATA_DIR`   | `metadata`   | Directory for video metadata JSON |
+| Tags storage     | `tags/tags.json` | Global tag list persisted as JSON |
 
 ## API Endpoints
 
@@ -107,6 +109,9 @@ Environment variables (defaults shown):
 | `/`                      | GET/POST | Main page (download form)      |
 | `/download`              | POST     | Add video to download queue    |
 | `/api/formats`           | POST     | List available video qualities |
+| `/api/tags`              | GET/POST | List or create tags            |
+| `/api/tags/{tag}`        | PUT/DELETE | Rename or delete a tag       |
+| `/api/video-tags/{file}` | GET/POST | Read or replace video tags     |
 | `/video/{filename}`      | GET      | Stream video file              |
 | `/thumbnails/{filename}` | GET      | Serve thumbnail image          |
 | `/delete/{filename}`     | POST     | Delete video and related files |
