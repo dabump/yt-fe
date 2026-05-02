@@ -169,10 +169,18 @@
                     <div class="modal-body">
                         <label for="url" class="form-label">YouTube URL</label>
                         <input type="text" class="form-control" id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." required autofocus>
+                        <input type="hidden" id="formatSelector" name="format_selector">
+                        <input type="hidden" id="resolution" name="resolution">
+                        <div class="format-picker" id="formatPicker" hidden>
+                            <label for="formatOptions" class="form-label">Available quality</label>
+                            <select class="form-control" id="formatOptions"></select>
+                            <p class="format-help" id="formatHelp"></p>
+                        </div>
+                        <p class="format-error" id="formatError" hidden></p>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="secondary-action" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="primary-action">Add to Queue</button>
+                        <button type="submit" class="primary-action" id="downloadSubmit">Check Resolutions</button>
                     </div>
                 </form>
             </div>

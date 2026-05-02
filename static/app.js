@@ -1,5 +1,6 @@
 let downloadModal;
 let wasProcessing = false;
+let formatsLoadedForURL = "";
 
 document.addEventListener("DOMContentLoaded", () => {
     const modalEl = document.getElementById("downloadModal");
@@ -11,10 +12,12 @@ document.addEventListener("DOMContentLoaded", () => {
         modalEl.addEventListener("shown.bs.modal", () => {
             document.getElementById("url")?.focus();
         });
+        modalEl.addEventListener("hidden.bs.modal", resetDownloadForm);
     }
 
     if (downloadForm) {
         downloadForm.addEventListener("submit", submitDownloadForm);
+        downloadForm.querySelector('input[name="url"]')?.addEventListener("input", resetFormatSelection);
     }
 
     if (videoSearchInput) {
@@ -38,16 +41,30 @@ function submitDownloadForm(event) {
     const form = event.currentTarget;
     const submitBtn = form.querySelector('button[type="submit"]');
     const urlInput = form.querySelector('input[name="url"]');
+    const formatSelectorInput = document.getElementById("formatSelector");
+    const resolutionInput = document.getElementById("resolution");
+    const formatOptions = document.getElementById("formatOptions");
     const url = urlInput.value.trim();
 
     if (!url) return;
 
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Adding...";
-    downloadModal?.hide();
+    if (formatsLoadedForURL !== url || !formatSelectorInput.value) {
+        checkAvailableFormats(url, submitBtn);
+        return;
+    }
+
+    const selectedOption = formatOptions.selectedOptions[0];
+    formatSelectorInput.value = selectedOption.value;
+    resolutionInput.value = selectedOption.dataset.label;
 
     const formData = new FormData();
     formData.append("url", url);
+    formData.append("format_selector", formatSelectorInput.value);
+    formData.append("resolution", resolutionInput.value);
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Adding...";
+    downloadModal?.hide();
 
     fetch("/download", {
         method: "POST",
@@ -56,7 +73,8 @@ function submitDownloadForm(event) {
         .then(response => {
             urlInput.value = "";
             submitBtn.disabled = false;
-            submitBtn.textContent = "Add to Queue";
+            submitBtn.textContent = "Check Resolutions";
+            resetFormatSelection();
 
             if (response.redirected) {
                 window.location.href = response.url;
@@ -67,9 +85,99 @@ function submitDownloadForm(event) {
         })
         .catch(() => {
             submitBtn.disabled = false;
-            submitBtn.textContent = "Add to Queue";
+            submitBtn.textContent = "Check Resolutions";
             downloadModal?.show();
         });
+}
+
+function checkAvailableFormats(url, submitBtn) {
+    const formatError = document.getElementById("formatError");
+    const formData = new FormData();
+    formData.append("url", url);
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Checking...";
+    formatError.hidden = true;
+    formatError.textContent = "";
+
+    fetch("/api/formats", {
+        method: "POST",
+        body: formData,
+    })
+        .then(async response => {
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+            return response.json();
+        })
+        .then(data => {
+            renderFormatOptions(url, data.formats || []);
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Add to Queue";
+        })
+        .catch(error => {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Check Resolutions";
+            formatError.textContent = error.message || "Failed to load available resolutions.";
+            formatError.hidden = false;
+        });
+}
+
+function renderFormatOptions(url, formats) {
+    const formatPicker = document.getElementById("formatPicker");
+    const formatOptions = document.getElementById("formatOptions");
+    const formatSelectorInput = document.getElementById("formatSelector");
+    const resolutionInput = document.getElementById("resolution");
+    const formatHelp = document.getElementById("formatHelp");
+
+    formatOptions.innerHTML = "";
+
+    formats.forEach(format => {
+        const option = document.createElement("option");
+        option.value = format.format_selector;
+        option.textContent = format.label;
+        option.dataset.label = format.label;
+        formatOptions.appendChild(option);
+    });
+
+    if (formats.length === 0) {
+        throw new Error("No downloadable video resolutions were found for this URL.");
+    }
+
+    formatsLoadedForURL = url;
+    formatSelectorInput.value = formats[0].format_selector;
+    resolutionInput.value = formats[0].label;
+    formatHelp.textContent = "Choose Best available, 4K, 2K, or any lower resolution exposed by YouTube for this video.";
+    formatPicker.hidden = false;
+}
+
+function resetDownloadForm() {
+    const form = document.getElementById("downloadForm");
+    form?.reset();
+    resetFormatSelection();
+}
+
+function resetFormatSelection() {
+    const formatPicker = document.getElementById("formatPicker");
+    const formatOptions = document.getElementById("formatOptions");
+    const formatSelectorInput = document.getElementById("formatSelector");
+    const resolutionInput = document.getElementById("resolution");
+    const formatError = document.getElementById("formatError");
+    const submitBtn = document.getElementById("downloadSubmit");
+
+    formatsLoadedForURL = "";
+    if (formatPicker) formatPicker.hidden = true;
+    if (formatOptions) formatOptions.innerHTML = "";
+    if (formatSelectorInput) formatSelectorInput.value = "";
+    if (resolutionInput) resolutionInput.value = "";
+    if (formatError) {
+        formatError.hidden = true;
+        formatError.textContent = "";
+    }
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Check Resolutions";
+    }
 }
 
 function openVideo(src) {

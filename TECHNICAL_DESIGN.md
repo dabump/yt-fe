@@ -270,6 +270,7 @@ flowchart TB
 | `/` | GET | `indexHandler` | Renders the media library. |
 | `/` | POST | `indexHandler` | Legacy form submit path; delegates to download handling. |
 | `/download` | POST | `downloadHandler` | Validates a URL and enqueues a download job. |
+| `/api/formats` | POST | `formatsHandler` | Returns available YouTube quality options before queueing a download. |
 | `/api/status` | GET | `apiStatusHandler` | Returns current queue and worker progress as JSON. |
 | `/video/{filename}` | GET | `videoHandler` | Streams a local `.webm` video. |
 | `/thumbnails/{filename}` | GET | `thumbnailHandler` | Serves a generated thumbnail image. |

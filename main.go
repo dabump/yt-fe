@@ -36,6 +36,7 @@ func main() {
 	mux.HandleFunc("/thumbnails/", app.thumbnailHandler)
 	mux.HandleFunc("/video/", app.videoHandler)
 	mux.HandleFunc("/delete/", app.deleteHandler)
+	mux.HandleFunc("/api/formats", app.formatsHandler)
 	mux.HandleFunc("/api/status", app.apiStatusHandler)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 

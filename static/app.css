@@ -635,6 +635,28 @@ a {
     box-shadow: 0 0 0 0.25rem rgba(239, 35, 60, 0.18);
 }
 
+.format-picker {
+    display: grid;
+    gap: 8px;
+    margin-top: 18px;
+}
+
+.format-help,
+.format-error {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+
+.format-help {
+    color: var(--muted);
+}
+
+.format-error {
+    margin-top: 14px;
+    color: #fecaca;
+}
+
 @media (max-width: 900px) {
     .page-shell {
         width: min(100% - 28px, 1440px);

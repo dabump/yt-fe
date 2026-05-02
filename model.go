@@ -16,6 +16,7 @@ type VideoMetadata struct {
 	Title        string `json:"title"`
 	VideoID      string `json:"video_id"`
 	URL          string `json:"url"`
+	Resolution   string `json:"resolution,omitempty"`
 	DownloadedAt string `json:"downloaded_at"`
 }
 
@@ -28,9 +29,11 @@ type PageData struct {
 }
 
 type DownloadJob struct {
-	URL      string
-	VideoID  string
-	Filename string
+	URL            string
+	VideoID        string
+	Filename       string
+	FormatSelector string
+	Resolution     string
 }
 
 type DownloadStatus struct {
@@ -44,4 +47,17 @@ type Config struct {
 	VideoDir      string `yaml:"video_dir"`
 	ThumbnailsDir string `yaml:"thumbnails_dir"`
 	MetadataDir   string `yaml:"metadata_dir"`
+}
+
+type VideoFormatOption struct {
+	Label          string `json:"label"`
+	Height         int    `json:"height"`
+	FormatSelector string `json:"format_selector"`
+}
+
+type VideoFormatsResponse struct {
+	URL     string              `json:"url"`
+	VideoID string              `json:"video_id"`
+	Title   string              `json:"title"`
+	Formats []VideoFormatOption `json:"formats"`
 }

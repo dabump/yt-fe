@@ -16,6 +16,11 @@ import (
 	"github.com/google/uuid"
 )
 
+type ytDLPFormat struct {
+	Height int    `json:"height"`
+	Vcodec string `json:"vcodec"`
+}
+
 func (app *App) indexHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		app.handleForm(w, r)
@@ -26,6 +31,8 @@ func (app *App) indexHandler(w http.ResponseWriter, r *http.Request) {
 
 func (app *App) handleForm(w http.ResponseWriter, r *http.Request) {
 	url := r.FormValue("url")
+	formatSelector := r.FormValue("format_selector")
+	resolution := r.FormValue("resolution")
 	if url == "" {
 		app.serveIndex(w, r, "", "Please provide a YouTube URL")
 		return
@@ -43,16 +50,132 @@ func (app *App) handleForm(w http.ResponseWriter, r *http.Request) {
 		app.serveIndex(w, r, "", err.Error())
 		return
 	}
+	if formatSelector == "" {
+		formatSelector = "bestvideo+bestaudio/best"
+	}
+	if resolution == "" {
+		resolution = "Best available"
+	}
 
 	filename := fmt.Sprintf("%s.webm", uuid.New().String())
 
 	app.enqueueDownload(DownloadJob{
-		URL:      url,
-		VideoID:  videoID,
-		Filename: filename,
+		URL:            url,
+		VideoID:        videoID,
+		Filename:       filename,
+		FormatSelector: formatSelector,
+		Resolution:     resolution,
 	})
 
 	app.serveIndex(w, r, "Video added to download queue!", "")
+}
+
+func (app *App) formatsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	url := cleanYouTubeURL(r.FormValue("url"))
+	if url == "" {
+		http.Error(w, "Please provide a YouTube URL", http.StatusBadRequest)
+		return
+	}
+	if extractVideoID(url) == "" {
+		http.Error(w, "Invalid YouTube URL", http.StatusBadRequest)
+		return
+	}
+
+	formats, err := getVideoFormats(url)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(formats); err != nil {
+		log.Printf("Failed to encode formats response: %v", err)
+	}
+}
+
+func getVideoFormats(url string) (VideoFormatsResponse, error) {
+	cmd := exec.Command("yt-dlp", "--dump-json", "--no-download", "--no-warnings", url)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		errMsg := string(output)
+		if strings.Contains(errMsg, "is not a valid URL") || strings.Contains(errMsg, "Unsupported URL") {
+			return VideoFormatsResponse{}, fmt.Errorf("invalid YouTube URL: %s", url)
+		}
+		if strings.Contains(errMsg, "Video unavailable") || strings.Contains(errMsg, "is unavailable") {
+			return VideoFormatsResponse{}, fmt.Errorf("this YouTube video is unavailable or has been removed")
+		}
+		return VideoFormatsResponse{}, fmt.Errorf("failed to get available video resolutions: %s", errMsg)
+	}
+
+	var data struct {
+		Title     string        `json:"title"`
+		DisplayID string        `json:"display_id"`
+		ID        string        `json:"id"`
+		Formats   []ytDLPFormat `json:"formats"`
+	}
+
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(output))), &data); err != nil {
+		return VideoFormatsResponse{}, fmt.Errorf("failed to parse available video resolutions")
+	}
+
+	videoID := data.DisplayID
+	if videoID == "" {
+		videoID = data.ID
+	}
+
+	return VideoFormatsResponse{
+		URL:     url,
+		VideoID: videoID,
+		Title:   data.Title,
+		Formats: buildVideoFormatOptions(data.Formats),
+	}, nil
+}
+
+func buildVideoFormatOptions(formats []ytDLPFormat) []VideoFormatOption {
+	heights := map[int]bool{}
+	for _, format := range formats {
+		if format.Height <= 0 || format.Vcodec == "" || format.Vcodec == "none" {
+			continue
+		}
+		heights[format.Height] = true
+	}
+
+	availableHeights := make([]int, 0, len(heights))
+	for height := range heights {
+		availableHeights = append(availableHeights, height)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(availableHeights)))
+
+	options := []VideoFormatOption{{
+		Label:          "Best available",
+		Height:         0,
+		FormatSelector: "bestvideo+bestaudio/best",
+	}}
+	for _, height := range availableHeights {
+		options = append(options, VideoFormatOption{
+			Label:          resolutionLabel(height),
+			Height:         height,
+			FormatSelector: fmt.Sprintf("bestvideo[height<=%d]+bestaudio/best[height<=%d]", height, height),
+		})
+	}
+
+	return options
+}
+
+func resolutionLabel(height int) string {
+	switch height {
+	case 2160:
+		return "4K / 2160p"
+	case 1440:
+		return "2K / 1440p"
+	default:
+		return fmt.Sprintf("%dp", height)
+	}
 }
 
 func getVideoMetadata(url string) (VideoMetadata, error) {
@@ -335,6 +458,7 @@ func (app *App) processDownloadQueue() {
 			app.finishJob()
 			continue
 		}
+		metadata.Resolution = job.Resolution
 
 		absPath, err := filepath.Abs(app.config.VideoDir)
 		if err != nil {
@@ -346,7 +470,11 @@ func (app *App) processDownloadQueue() {
 		tempPath := videoPath + ".temp"
 
 		outputTemplate := tempPath + ".%(ext)s"
-		cmd := exec.Command("yt-dlp", "-f", "bestvideo+bestaudio/best", "-o", outputTemplate, job.URL)
+		formatSelector := job.FormatSelector
+		if formatSelector == "" {
+			formatSelector = "bestvideo+bestaudio/best"
+		}
+		cmd := exec.Command("yt-dlp", "-f", formatSelector, "-o", outputTemplate, job.URL)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 

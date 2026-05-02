@@ -106,6 +106,7 @@ Environment variables (defaults shown):
 | ------------------------ | -------- | ------------------------------ |
 | `/`                      | GET/POST | Main page (download form)      |
 | `/download`              | POST     | Add video to download queue    |
+| `/api/formats`           | POST     | List available video qualities |
 | `/video/{filename}`      | GET      | Stream video file              |
 | `/thumbnails/{filename}` | GET      | Serve thumbnail image          |
 | `/delete/{filename}`     | POST     | Delete video and related files |
