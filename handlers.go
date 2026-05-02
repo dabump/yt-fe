@@ -3,34 +3,31 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-var downloadMutex sync.Mutex
-
-func indexHandler(w http.ResponseWriter, r *http.Request) {
+func (app *App) indexHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
-		handleForm(w, r)
+		app.handleForm(w, r)
 		return
 	}
-	serveIndex(w, r, "", "")
+	app.serveIndex(w, r, "", "")
 }
 
-func handleForm(w http.ResponseWriter, r *http.Request) {
+func (app *App) handleForm(w http.ResponseWriter, r *http.Request) {
 	url := r.FormValue("url")
 	if url == "" {
-		serveIndex(w, r, "", "Please provide a YouTube URL")
+		app.serveIndex(w, r, "", "Please provide a YouTube URL")
 		return
 	}
 
@@ -38,29 +35,24 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 
 	videoID := extractVideoID(url)
 	if videoID == "" {
-		serveIndex(w, r, "", "Invalid YouTube URL. Please provide a valid YouTube video link (e.g., https://www.youtube.com/watch?v=VIDEO_ID)")
+		app.serveIndex(w, r, "", "Invalid YouTube URL. Please provide a valid YouTube video link (e.g., https://www.youtube.com/watch?v=VIDEO_ID)")
 		return
 	}
 
-	metadata, err := getVideoMetadata(url)
-	if err != nil {
-		serveIndex(w, r, "", err.Error())
+	if _, err := getVideoMetadata(url); err != nil {
+		app.serveIndex(w, r, "", err.Error())
 		return
 	}
 
 	filename := fmt.Sprintf("%s.webm", uuid.New().String())
 
-	queueMutex.Lock()
-	downloadQueue = append(downloadQueue, DownloadJob{
+	app.enqueueDownload(DownloadJob{
 		URL:      url,
 		VideoID:  videoID,
 		Filename: filename,
 	})
-	downloadStatus.Queue = downloadQueue
-	queueMutex.Unlock()
 
-	_ = metadata
-	serveIndex(w, r, "Video added to download queue!", "")
+	app.serveIndex(w, r, "Video added to download queue!", "")
 }
 
 func getVideoMetadata(url string) (VideoMetadata, error) {
@@ -104,22 +96,33 @@ func getVideoMetadata(url string) (VideoMetadata, error) {
 	}, nil
 }
 
-func saveMetadata(filename string, metadata VideoMetadata) {
-	absPath, _ := filepath.Abs(config.MetadataDir)
+func (app *App) saveMetadata(filename string, metadata VideoMetadata) error {
+	absPath, err := filepath.Abs(app.config.MetadataDir)
+	if err != nil {
+		return err
+	}
 	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".webm")+".json")
-	data, _ := json.MarshalIndent(metadata, "", "  ")
-	os.WriteFile(metadataPath, data, 0o644)
+	data, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(metadataPath, data, 0o644)
 }
 
-func loadMetadata(filename string) VideoMetadata {
-	absPath, _ := filepath.Abs(config.MetadataDir)
+func (app *App) loadMetadata(filename string) VideoMetadata {
+	absPath, err := filepath.Abs(app.config.MetadataDir)
+	if err != nil {
+		return VideoMetadata{}
+	}
 	metadataPath := filepath.Join(absPath, strings.TrimSuffix(filename, ".webm")+".json")
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
 		return VideoMetadata{}
 	}
 	var metadata VideoMetadata
-	json.Unmarshal(data, &metadata)
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return VideoMetadata{}
+	}
 	return metadata
 }
 
@@ -130,8 +133,8 @@ func convertToWebm(inputPath, outputPath string) error {
 	return cmd.Run()
 }
 
-func serveIndex(w http.ResponseWriter, r *http.Request, success, errMsg string) {
-	videos, err := getVideos()
+func (app *App) serveIndex(w http.ResponseWriter, r *http.Request, success, errMsg string) {
+	videos, err := app.getVideos()
 	if err != nil {
 		errMsg = fmt.Sprintf("Error reading videos: %v", err)
 	}
@@ -142,16 +145,14 @@ func serveIndex(w http.ResponseWriter, r *http.Request, success, errMsg string) 
 		Success: success,
 	}
 
-	tmpl, err := template.ParseFiles("templates/index.html")
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Template error: %v", err), http.StatusInternalServerError)
+	if err := app.tmpl.Execute(w, data); err != nil {
+		log.Printf("Template execution error: %v", err)
 		return
 	}
-	tmpl.Execute(w, data)
 }
 
-func getVideos() ([]Video, error) {
-	entries, err := os.ReadDir(config.VideoDir)
+func (app *App) getVideos() ([]Video, error) {
+	entries, err := os.ReadDir(app.config.VideoDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []Video{}, nil
@@ -165,12 +166,11 @@ func getVideos() ([]Video, error) {
 			continue
 		}
 		thumbName := strings.TrimSuffix(entry.Name(), ".webm") + ".jpg"
-		thumbPath := filepath.Join(config.ThumbnailsDir, thumbName)
-		if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
-			generateThumbnail(filepath.Join(config.VideoDir, entry.Name()), entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			return nil, err
 		}
-		info, _ := entry.Info()
-		metadata := loadMetadata(entry.Name())
+		metadata := app.loadMetadata(entry.Name())
 		title := metadata.Title
 		if title == "" {
 			title = strings.TrimSuffix(entry.Name(), ".webm")
@@ -220,9 +220,16 @@ func cleanYouTubeURL(rawURL string) string {
 	return "https://www.youtube.com/watch?v=" + videoID
 }
 
-func generateThumbnail(videoPath, filename string) {
-	absPath, _ := filepath.Abs(config.ThumbnailsDir)
-	os.MkdirAll(absPath, 0o755)
+func (app *App) generateThumbnail(videoPath, filename string) {
+	absPath, err := filepath.Abs(app.config.ThumbnailsDir)
+	if err != nil {
+		log.Printf("Failed to resolve thumbnail path: %v", err)
+		return
+	}
+	if err := os.MkdirAll(absPath, 0o755); err != nil {
+		log.Printf("Failed to create thumbnail directory: %v", err)
+		return
+	}
 	thumbName := strings.TrimSuffix(filename, ".webm") + ".jpg"
 	thumbPath := filepath.Join(absPath, thumbName)
 	fmt.Printf("Generating thumbnail: ffmpeg -y -i %s -ss 00:00:01 -vframes 1 -q:v 2 %s\n", videoPath, thumbPath)
@@ -230,12 +237,12 @@ func generateThumbnail(videoPath, filename string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("Failed to generate thumbnail: %v\n", err)
+		log.Printf("Failed to generate thumbnail: %v", err)
 	}
 }
 
-func generateMissingThumbnails() {
-	entries, err := os.ReadDir(config.VideoDir)
+func (app *App) generateMissingThumbnails() {
+	entries, err := os.ReadDir(app.config.VideoDir)
 	if err != nil {
 		return
 	}
@@ -245,92 +252,96 @@ func generateMissingThumbnails() {
 			continue
 		}
 		thumbName := strings.TrimSuffix(entry.Name(), ".webm") + ".jpg"
-		thumbPath := filepath.Join(config.ThumbnailsDir, thumbName)
+		thumbPath := filepath.Join(app.config.ThumbnailsDir, thumbName)
 		if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
-			videoPath := filepath.Join(config.VideoDir, entry.Name())
+			videoPath := filepath.Join(app.config.VideoDir, entry.Name())
 			fmt.Printf("Generating thumbnail for %s...\n", entry.Name())
-			generateThumbnail(videoPath, entry.Name())
+			app.generateThumbnail(videoPath, entry.Name())
 		}
 	}
 }
 
-func thumbnailHandler(w http.ResponseWriter, r *http.Request) {
+func (app *App) thumbnailHandler(w http.ResponseWriter, r *http.Request) {
 	thumbName := filepath.Base(r.URL.Path)
-	thumbPath := filepath.Join(config.ThumbnailsDir, thumbName)
+	thumbPath := filepath.Join(app.config.ThumbnailsDir, thumbName)
 	file, err := os.Open(thumbPath)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
 	defer file.Close()
-	io.Copy(w, file)
+	if _, err := io.Copy(w, file); err != nil {
+		log.Printf("Failed to serve thumbnail %s: %v", thumbName, err)
+	}
 }
 
-func downloadHandler(w http.ResponseWriter, r *http.Request) {
+func (app *App) downloadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	handleForm(w, r)
+	app.handleForm(w, r)
 }
 
-func videoHandler(w http.ResponseWriter, r *http.Request) {
+func (app *App) videoHandler(w http.ResponseWriter, r *http.Request) {
 	videoName := filepath.Base(r.URL.Path)
-	videoPath := filepath.Join(config.VideoDir, videoName)
+	videoPath := filepath.Join(app.config.VideoDir, videoName)
 	file, err := os.Open(videoPath)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
 	defer file.Close()
-	w.Header().Set("Content-Type", "video/mp4")
-	io.Copy(w, file)
+	w.Header().Set("Content-Type", "video/webm")
+	if _, err := io.Copy(w, file); err != nil {
+		log.Printf("Failed to serve video %s: %v", videoName, err)
+	}
 }
 
-func deleteHandler(w http.ResponseWriter, r *http.Request) {
+func (app *App) deleteHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 	videoName := filepath.Base(r.URL.Path)
-	videoPath := filepath.Join(config.VideoDir, videoName)
+	videoPath := filepath.Join(app.config.VideoDir, videoName)
 	thumbName := strings.TrimSuffix(videoName, ".webm") + ".jpg"
-	thumbPath := filepath.Join(config.ThumbnailsDir, thumbName)
+	thumbPath := filepath.Join(app.config.ThumbnailsDir, thumbName)
 	metadataName := strings.TrimSuffix(videoName, ".webm") + ".json"
-	metadataPath := filepath.Join(config.MetadataDir, metadataName)
-	os.Remove(videoPath)
-	os.Remove(thumbPath)
-	os.Remove(metadataPath)
+	metadataPath := filepath.Join(app.config.MetadataDir, metadataName)
+	if err := removeIfExists(videoPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := removeIfExists(thumbPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := removeIfExists(metadataPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
-func processDownloadQueue() {
-	for {
-		queueMutex.Lock()
-		if len(downloadQueue) == 0 {
-			downloadStatus.Processing = false
-			downloadStatus.Current = nil
-			downloadStatus.Queue = []DownloadJob{}
-			queueMutex.Unlock()
-			continue
-		}
-
-		job := downloadQueue[0]
-		downloadQueue = downloadQueue[1:]
-		downloadStatus.Queue = downloadQueue
-		downloadStatus.Processing = true
-		downloadStatus.Current = &job
-		downloadStatus.Progress = 0
-		queueMutex.Unlock()
-
+func (app *App) processDownloadQueue() {
+	for job := range app.jobs {
+		app.startJob(job)
 		fmt.Printf("Processing download: %s\n", job.URL)
 
 		metadata, err := getVideoMetadata(job.URL)
 		if err != nil {
-			fmt.Printf("Failed to get metadata for %s: %v\n", job.URL, err)
+			log.Printf("Failed to get metadata for %s: %v", job.URL, err)
+			app.finishJob()
 			continue
 		}
 
-		absPath, _ := filepath.Abs(config.VideoDir)
+		absPath, err := filepath.Abs(app.config.VideoDir)
+		if err != nil {
+			log.Printf("Failed to resolve video path: %v", err)
+			app.finishJob()
+			continue
+		}
 		videoPath := filepath.Join(absPath, job.Filename)
 		tempPath := videoPath + ".temp"
 
@@ -341,17 +352,21 @@ func processDownloadQueue() {
 
 		err = cmd.Run()
 		if err != nil {
-			fmt.Printf("Failed to download %s: %v\n", job.URL, err)
+			log.Printf("Failed to download %s: %v", job.URL, err)
+			app.finishJob()
 			continue
 		}
 
-		downloadMutex.Lock()
-		downloadStatus.Progress = 50
-		downloadMutex.Unlock()
+		app.setDownloadProgress(50)
 
 		downloadedFile := tempPath + ".webm"
 		if _, err := os.Stat(downloadedFile); os.IsNotExist(err) {
-			files, _ := os.ReadDir(absPath)
+			files, err := os.ReadDir(absPath)
+			if err != nil {
+				log.Printf("Failed to inspect download directory: %v", err)
+				app.finishJob()
+				continue
+			}
 			for _, f := range files {
 				if strings.HasPrefix(f.Name(), job.Filename+".temp.") {
 					downloadedFile = filepath.Join(absPath, f.Name())
@@ -361,46 +376,63 @@ func processDownloadQueue() {
 		}
 
 		if strings.HasSuffix(downloadedFile, ".webm") {
-			os.Rename(downloadedFile, videoPath)
-		} else {
-			if err := convertToWebm(downloadedFile, videoPath); err != nil {
-				fmt.Printf("Failed to convert %s: %v\n", job.URL, err)
-				os.Remove(downloadedFile)
+			if err := os.Rename(downloadedFile, videoPath); err != nil {
+				log.Printf("Failed to move downloaded file: %v", err)
+				app.finishJob()
 				continue
 			}
-			os.Remove(downloadedFile)
+		} else {
+			if err := convertToWebm(downloadedFile, videoPath); err != nil {
+				log.Printf("Failed to convert %s: %v", job.URL, err)
+				if err := os.Remove(downloadedFile); err != nil && !os.IsNotExist(err) {
+					log.Printf("Failed to remove temp download %s: %v", downloadedFile, err)
+				}
+				app.finishJob()
+				continue
+			}
+			if err := os.Remove(downloadedFile); err != nil && !os.IsNotExist(err) {
+				log.Printf("Failed to remove temp download %s: %v", downloadedFile, err)
+			}
 		}
 
-		downloadMutex.Lock()
-		downloadStatus.Progress = 75
-		downloadMutex.Unlock()
+		app.setDownloadProgress(75)
 
-		saveMetadata(job.Filename, metadata)
-		generateThumbnail(videoPath, job.Filename)
+		if err := app.saveMetadata(job.Filename, metadata); err != nil {
+			log.Printf("Failed to save metadata for %s: %v", job.Filename, err)
+		}
+		app.generateThumbnail(videoPath, job.Filename)
 
-		downloadMutex.Lock()
-		downloadStatus.Progress = 100
-		downloadMutex.Unlock()
+		app.setDownloadProgress(100)
 
 		fmt.Printf("Download complete: %s\n", job.Filename)
+		app.finishJob()
 	}
 }
 
-func apiStatusHandler(w http.ResponseWriter, r *http.Request) {
-	queueMutex.Lock()
+func (app *App) apiStatusHandler(w http.ResponseWriter, r *http.Request) {
+	snapshot := app.statusSnapshot()
 	status := struct {
 		Processing bool          `json:"processing"`
 		Current    *DownloadJob  `json:"current"`
 		Queue      []DownloadJob `json:"queue"`
 		Progress   float64       `json:"progress"`
 	}{
-		Processing: downloadStatus.Processing,
-		Current:    downloadStatus.Current,
-		Queue:      downloadStatus.Queue,
-		Progress:   downloadStatus.Progress,
+		Processing: snapshot.Processing,
+		Current:    snapshot.Current,
+		Queue:      snapshot.Queue,
+		Progress:   snapshot.Progress,
 	}
-	queueMutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		log.Printf("Failed to encode status response: %v", err)
+	}
+}
+
+func removeIfExists(path string) error {
+	err := os.Remove(path)
+	if err == nil || os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }

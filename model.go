@@ -1,10 +1,7 @@
 package main
 
 import (
-	"os"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 type Video struct {
@@ -47,26 +44,4 @@ type Config struct {
 	VideoDir      string `yaml:"video_dir"`
 	ThumbnailsDir string `yaml:"thumbnails_dir"`
 	MetadataDir   string `yaml:"metadata_dir"`
-}
-
-var config Config
-
-func loadConfig() Config {
-	data, err := os.ReadFile("config.yaml")
-	if err != nil {
-		return Config{
-			VideoDir:      "video",
-			ThumbnailsDir: "thumbnails",
-			MetadataDir:   "metadata",
-		}
-	}
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return Config{
-			VideoDir:      "video",
-			ThumbnailsDir: "thumbnails",
-			MetadataDir:   "metadata",
-		}
-	}
-	return cfg
 }
