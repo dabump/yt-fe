@@ -37,6 +37,7 @@ func main() {
 	mux.HandleFunc("/video/", app.videoHandler)
 	mux.HandleFunc("/delete/", app.deleteHandler)
 	mux.HandleFunc("/api/status", app.apiStatusHandler)
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	go app.processDownloadQueue()
 
