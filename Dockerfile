@@ -23,6 +23,10 @@ COPY --from=builder /build/yt-fe /app/yt-fe
 
 COPY --from=builder /build/templates /app/templates
 
+COPY --from=builder /build/assets /app/assets
+
+COPY --from=builder /build/static /app/static
+
 COPY entrypoint.sh /app/entrypoint.sh
 
 RUN chmod +x /app/entrypoint.sh
